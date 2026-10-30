@@ -131,22 +131,25 @@
   function shift() { $('.lockup').style.setProperty('--shift', ($('.lockup-word').offsetWidth / 2).toFixed(2) + 'px'); }
   addEventListener('resize', shift);
 
-  /* ---- one step to another ---- */
+  /* ---- one step to another ----
+     The first time in the room, igloo's way into it: where in its timeline it starts, and for how long */
+  var FALL_FROM = 0, FALL_TIME = 8, fallen = false;
   var at = 0, want = 0, running = false, opened = null, opening = true, lit = {};
   function settle(from, to) {
     var s = steps[to], y = place(s), moving = Math.abs(ice.scroll.y - y) > 0.001;
-    var entering = s.room !== undefined && moving;
+    var falls = !fallen && s.room === 0;
     var shine = s.shine || [];
     Object.keys(lit).forEach(function (k) { if (lit[k] && shine.indexOf(k) < 0) { ice.shine(k, false); lit[k] = false; } });
     var chain = Promise.resolve();
     if (opened !== null && s.open !== opened) chain = chain.then(function () { return ice.close(); }).then(function () { opened = null; });
     chain = chain.then(function () {
-      if (entering) ice.gather(s.form);
+      if (falls) fallen = true;
       else if (s.form !== undefined) ice.form(s.form);
       if (s.inside) ice.empty();
       if (!moving) return wait(0.35);
-      var d = Math.abs(ice.scroll.y - y);
-      return ice.glide(y, d <= 1.05 ? 1.9 : 3.0);
+      var d = Math.abs(ice.scroll.y - y), going = ice.glide(y, d <= 1.05 ? 1.9 : 3.0);
+      /* the words wait until the fall has reached the room */
+      return falls ? Promise.all([going, ice.fall(FALL_FROM, FALL_TIME)]) : going;
     });
     if (s.open !== undefined) chain = chain.then(function () { if (opened !== s.open) { opened = s.open; return ice.open(s.open); } });
     return chain.then(function () {

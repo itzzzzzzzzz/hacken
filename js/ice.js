@@ -28,6 +28,8 @@ var Ice = (function () {
   var PAGE = 'page', ROOM = 'room', BLOCKS = 'cubes', INSIDE = 'detail';
   /* how far down igloo's fall the room is: where igloo's own scroll comes to rest in it */
   var IN_ROOM = 0.76;
+  /* a place in the fall with its rings in view, to compile their shaders behind the curtain */
+  var IN_FALL = 0.3;
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
@@ -69,6 +71,7 @@ var Ice = (function () {
     var ig = null, box = null, board = null;
     var line = [], cubes = null, cubesComposer = null, detail = null, detailComposer = null, ui = null;
     var room = null, roomComposer = null, shapes = o.shapes || [], WARM = 0;
+    var roomAt = { value: IN_ROOM }, falling = false, snap = 0;
     var cut = null, plane = null, clear = null;
     var figures = {}, glows = {};
     var scroll = { total: 0, targetY1: 0, targetY2: 0, y: 0, velocity: 0 };
@@ -319,12 +322,15 @@ var Ice = (function () {
       /* the room's last pass, its own colour: its blue mostly out, its glare off the words, and
          the side the words stand on a little in the shade, so white reads on it */
       var grade = room.___composerPass.material;
-      grade.fragmentShader = grade.fragmentShader.replace('gl_FragColor = vec4(clamp(sceneColor, 0.0, 1.0), 1.0);', [
-        'sceneColor = mix(scene, sceneColor, 0.25);',
-        'sceneColor = mix(vec3(dot(sceneColor, vec3(0.299, 0.587, 0.114))), sceneColor, 0.35);',
-        'sceneColor *= mix(1.0, 0.6, smoothstep(0.38, 0.7, vUv.x));',
-        'gl_FragColor = vec4(clamp(sceneColor, 0.0, 1.0), 1.0);'
-      ].join('\n'));
+      grade.uniforms.uGrade = { value: 1 };
+      grade.fragmentShader = grade.fragmentShader
+        .replace('uniform float uRingProximity;', 'uniform float uRingProximity; uniform float uGrade;')
+        .replace('gl_FragColor = vec4(clamp(sceneColor, 0.0, 1.0), 1.0);', [
+          'vec3 graded = mix(scene, sceneColor, 0.25);',
+          'graded = mix(vec3(dot(graded, vec3(0.299, 0.587, 0.114))), graded, 0.35);',
+          'graded *= mix(1.0, 0.6, smoothstep(0.38, 0.7, vUv.x));',
+          'gl_FragColor = vec4(clamp(mix(sceneColor, graded, uGrade), 0.0, 1.0), 1.0);'
+        ].join('\n'));
       grade.needsUpdate = true;
       lerps = [room.camera.lerpPosition, room.camera.lerpTarget, room.camera.lerpRotation];
       room.camera.lerpPosition = room.camera.lerpTarget = room.camera.lerpRotation = 1;
@@ -479,11 +485,19 @@ var Ice = (function () {
       }
     };
 
+    /* During the fall the picture is igloo's, centred and in its colours; on the
+       last stretch, as the room comes, it moves left and takes on the room's grade. */
+    function reach() {
+      var k = clamp01((roomAt.value - 0.6) / (IN_ROOM - 0.6)), w = innerWidth, h = innerHeight;
+      k = k * k * (3 - 2 * k);
+      room.camera.setViewOffset(w, h, k * SHIFT * clamp01((w / h - 0.9) / 0.5) * w, 0, w, h);
+      room.___composerPass.material.uniforms.uGrade.value = k;
+    }
     /* the blocks stand left of centre on a wide screen; the camera's window moves, not the canvas */
     function frame() {
       var w = innerWidth, h = innerHeight, shift = SHIFT * clamp01((w / h - 0.9) / 0.5);
       cubes.camera.setViewOffset(w, h, shift * w, 0, w, h);
-      room.camera.setViewOffset(w, h, shift * w, 0, w, h);
+      if (falling) reach(); else room.camera.setViewOffset(w, h, shift * w, 0, w, h);
       Object.keys(glows).forEach(function (k) { if (glows[k].on) place(glows[k]); });
     }
 
@@ -518,7 +532,13 @@ var Ice = (function () {
       /* said once a frame: each time the scene comes on, igloo deals its blocks a new turn */
       cubes.isSceneVisible = blocks;
       room.isSceneVisible = inRoom;
-      room.progress = IN_ROOM;
+      room.progress = warm ? (warm > WARM / 2 ? IN_FALL : IN_ROOM) : roomAt.value;
+      /* at the start of the fall the camera goes straight to its place; then it follows as igloo's does */
+      if (snap) {
+        room.camera.lerpPosition = room.camera.lerpTarget = room.camera.lerpRotation = 1;
+        if (--snap === 0) { room.camera.lerpPosition = lerps[0]; room.camera.lerpTarget = lerps[1]; room.camera.lerpRotation = lerps[2]; }
+      }
+      if (falling) reach();
       /* the figure turns a little to either side and back, so it never shows its edge */
       if (inRoom) room.containerparticles.mesh.computationMaterial.uniforms.uRotation.value = Math.PI + Math.sin(now / 1000 * 0.32) * 0.38;
       if (held === null) held = line.length - 1;
@@ -635,32 +655,29 @@ var Ice = (function () {
       });
     };
 
-    /* Into the room: igloo's own way in (its timeline), very small. The particles
-       are at their shape already, a little loose and a little lit; they fade up
-       and settle. Here it runs by the clock, since no one scrolls. */
-    var settling = [];
-    function shapeUp(particles, u, i) {
-      particles.currentLink = i;
-      u.tVolume.value = particles.vdbs[i];
-      u.uVolumeScale.value = particles.vdbScales[i];
-    }
-    api.gather = function (i) {
-      var particles = room.containerparticles, u = particles.mesh.computationMaterial.uniforms, m = particles.mesh.material.uniforms;
-      settling.forEach(function (t) { t.kill(); });
-      shapeUp(particles, u, i);
-      m.uAlpha.value = 0; m.uInitialGlow.value = 0.16; u.uShowNoise.value = 0.32;
-      settling = [
-        ig.re.to(m.uAlpha, { value: 1, duration: 1.1, ease: 'power2.inOut' }),
-        ig.re.to(u.uShowNoise, { value: 0, duration: 1.3, delay: 0.8, ease: 'sine.inOut' }),
-        ig.re.to(m.uInitialGlow, { value: 0, duration: 1.1, delay: 0.8, ease: 'sine.inOut' })
-      ];
+    /* The first time the room is seen: igloo's own way into it, its own timeline
+       from its own start, played by the clock since no one scrolls: the fall, its
+       rings, the particles coming up and assembling at the bottom. igloo's colours
+       and its centred picture until the room is reached. Once only. */
+    api.fall = function (from, dur) {
+      return new Promise(function (done) {
+        falling = true;
+        roomAt.value = from;
+        snap = 2;
+        ig.re.to(roomAt, {
+          value: IN_ROOM, duration: dur, ease: 'sine.inOut',
+          onComplete: function () { falling = false; room.___composerPass.material.uniforms.uGrade.value = 1; frame(); done(); }
+        });
+      });
     };
     /* the particles gather into another shape, as igloo's do when its link changes (its changeLink) */
     api.form = function (i) {
       var particles = room.containerparticles, u = particles.mesh.computationMaterial.uniforms;
       if (particles.currentLink === i) return;
+      particles.currentLink = i;
       ig.re.fromTo(u.uAdditionalNoise, { value: 1 }, { value: 0, duration: 0.5, ease: 'power2.inOut', overwrite: true });
-      shapeUp(particles, u, i);
+      u.tVolume.value = particles.vdbs[i];
+      u.uVolumeScale.value = particles.vdbScales[i];
       ig.re.to(room.floor, { additionalTime: room.floor.additionalTime + 4, duration: 3, ease: 'power4.out', overwrite: true });
       particles.soundControl.splatTargetVelocity += 1;
     };
