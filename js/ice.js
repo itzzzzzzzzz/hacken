@@ -48,7 +48,7 @@ var Ice = (function () {
   function create(o) {
     var ig = null, box = null, board = null;
     var line = [], cubes = null, cubesComposer = null, detail = null, detailComposer = null, ui = null;
-    var cut = null, plane = null, clear = null, round = null;
+    var cut = null, plane = null, clear = null;
     var figures = {}, glows = {};
     var scroll = { total: 0, targetY1: 0, targetY2: 0, y: 0, velocity: 0 };
     var bridge = { scroll: scroll, isDetailOpen: false, scrollComposers: [], round: round2, centerScroll: function () {} };
@@ -292,13 +292,19 @@ var Ice = (function () {
        igloo.inc: the mark's own shader — its colour, the flicker and the
        blocks that shift it as it comes, its edges read from the distance
        field — over igloo's own type in place of the mark's drawing, in
-       igloo's own words scene, which igloo's bloom lights. */
+       igloo's own words scene, which igloo's bloom lights. A soft word keeps
+       the mark's glow but not its flicker: its letters simply come up, from
+       the first to the last. */
     function shining(mark, type) {
       var Type = type.constructor;
       var vertex = type.material.vertexShader
         .replace(/vUv\.x = mod\([^;]*;/, '')
-        .replace(/vAlpha = tr1;/, 'vAlpha = 1.0;');
-      var fragment = mark.fragmentShader.replace(/vec2 uv = imagefitUV\([^;]*;/, 'vec2 uv = vUv;');
+        .replace(/vAlpha = tr1;/, 'vAlpha = uSoft < 0.0 ? 1.0 : smoothstep(0.0, 0.9, uSoft * 1.9 - textWeights.x);')
+        .replace('uniform float uShow1;', 'uniform float uShow1; uniform float uSoft;');
+      var fragment = mark.fragmentShader
+        .replace(/vec2 uv = imagefitUV\([^;]*;/, 'vec2 uv = vUv;')
+        .replace('uniform float uRand;', 'uniform float uRand; varying float vAlpha;')
+        .replace('gl_FragColor = vec4(uColor, a);', 'gl_FragColor = vec4(uColor, a * vAlpha);');
       (o.glows || []).forEach(function (g) {
         var text = new Type({ font: 'IBMPlexMono-Medium', text: g.text, width: 40, align: g.align || 'left', lineHeight: 0.8, size: 0.09 }, {
           uniforms: {
@@ -308,7 +314,8 @@ var Ice = (function () {
             uColor2: { value: mark.uniforms.uColor2.value.clone() },
             uShow: { value: 1 },
             uRand: { value: Math.random() },
-            uShow1: { value: 1 }, uShow2: { value: 1 }
+            uShow1: { value: 1 }, uShow2: { value: 1 },
+            uSoft: { value: g.soft ? 1 : -1 }
           },
           vertexShader: vertex, fragmentShader: fragment,
           depthWrite: false, depthTest: false, transparent: true
@@ -339,6 +346,18 @@ var Ice = (function () {
       w.on = on;
       var u = w.mesh.material.uniforms;
       ig.re.killTweensOf(u.uShow);
+      if (w.g.soft) {
+        ig.re.killTweensOf(u.uSoft);
+        if (on) {
+          place(w);
+          u.uSoft.value = 0;
+          w.mesh.visible = true;
+          ig.re.to(u.uSoft, { value: 1, delay: delay || 0, duration: 2.2, ease: 'sine.inOut', overwrite: true });
+        } else {
+          ig.re.to(u.uSoft, { value: 0, duration: 0.5, ease: 'sine.out', overwrite: true, onComplete: function () { w.mesh.visible = false; } });
+        }
+        return;
+      }
       if (on) {
         place(w);
         u.uRand.value = Math.random();
@@ -364,70 +383,8 @@ var Ice = (function () {
       return line[i].top + line[i].height - 0.5;
     }
 
-    /* Igloo's cut climbs the screen as a diagonal. The way in is the same cut
-       bent into a circle, as on Groove Dynamics' scroll page: igloo's own
-       shader, read from the middle outwards instead of from the bottom up;
-       the slide and the smear along the edge are switched off. */
-    function roundCut() {
-      var material = new ig.f3(), source = material.fragmentShader;
-      var edits = [
-        ['vUv.y + inclination * abs(slope)',
-         '(length((vUv - 0.5) * vec2(aspect, 1.0)) / length(vec2(aspect, 1.0) * 0.5) + (slopeDisp + 0.4) * abs(slope) * 0.5)'],
-        ['const float parallaxY = 0.4;', 'const float parallaxY = 0.0;'],
-        ['const float displacement = 0.025;', 'const float displacement = 0.0;'],
-        ['float modulator = 12.0 *', 'float modulator = 0.0 *']
-      ];
-      for (var i = 0; i < edits.length; i++) {
-        if (source.indexOf(edits[i][0]) < 0) return null;
-        source = source.split(edits[i][0]).join(edits[i][1]);
-      }
-      material.fragmentShader = source;
-      return material;
-    }
-
-    /* The way in, once, when the curtain lifts: the canvas lies over the first
-       slide as a sheet of paper, the round cut opens it from the middle —
-       igloo's sky first, as the band it is in every cut, and behind it the
-       slide itself — and runs out over the corners. */
-    var dive = null;
-    var LAG = 0.22;
-    api.plunge = function (opts) {
-      if (!ready || dive) return Promise.resolve(false);
-      if (!round) round = roundCut();
-      if (!round) return Promise.resolve(false);
-      return new Promise(function (done) {
-        dive = { t0: performance.now(), dur: (opts && opts.dur) || 1.2, o: opts || {}, done: done };
-        plane.material = round;
-        var first = function () { ig.Q.off('webgl_postrender', first); if (opts && opts.begin) opts.begin(); };
-        ig.Q.on('webgl_postrender', first);
-        ig.Q.emit('webgl_render_active', true);
-      });
-    };
-    function dip() {
-      var k = clamp01((performance.now() - dive.t0) / 1000 / dive.dur);
-      if (k >= 1) {
-        var d = dive;
-        dive = null;
-        plane.material = cut;
-        cubes.isSceneVisible = false;
-        d.done(true);
-        return draw();
-      }
-      var q = k * (0.35 + 0.65 * k), hole = clamp01((q - LAG) / (1 - LAG)), u = round.uniforms;
-      /* the sky is the blocks' own, from above them, before the first has come up */
-      cubes.isSceneVisible = true; cubes.progress = 0;
-      cubesComposer.render();
-      clear.mask(round, clear.everything, clear.nothing, hole);
-      u.tScene1.value = clear.everything;
-      u.tScene2.value = cubesComposer.readBuffer.texture;
-      u.uProgress.value = q;
-      u.uInCubes.value = false;
-      if (dive.o.step) dive.o.step(q);
-    }
-
     /* ---- each frame, from inside igloo's own render, as igloo's controller renders (jF.render) ---- */
     function draw() {
-      if (dive) return dip();
       if (!ready && !warm) return;
       var y = warm ? warmAt() : scroll.y, u = cut.uniforms;
       if (warm) u.uDetailProgress.value = warm <= 2 ? 0.5 : 0;
@@ -440,14 +397,15 @@ var Ice = (function () {
       last = y;
 
       /* the screen is one unit tall: its top edge sits in one place, its bottom edge maybe in the next */
-      var n = round2(y), r = round2(y + 1), held = null, coming = null, into = 0;
-      cubes.isSceneVisible = false;
+      var n = round2(y), r = round2(y + 1), held = null, coming = null, into = 0, blocks = false;
       line.forEach(function (s, i) {
         var bottom = s.top + s.height;
         var holdsTop = n >= s.top && n < bottom, holdsBottom = r > s.top && r <= bottom;
-        if (s.kind === BLOCKS && (holdsTop || holdsBottom)) { cubes.progress = (y + 1 - s.top) / (s.height + 1); cubes.isSceneVisible = true; }
+        if (s.kind === BLOCKS && (holdsTop || holdsBottom)) { cubes.progress = (y + 1 - s.top) / (s.height + 1); blocks = true; }
         if (holdsTop) held = i; else if (holdsBottom && coming === null) { coming = i; into = y + 1 - s.top; }
       });
+      /* said once a frame: each time the scene comes on, igloo deals its blocks a new turn */
+      cubes.isSceneVisible = blocks;
       if (held === null) held = line.length - 1;
 
       var d = u.uDetailProgress.value;
@@ -518,25 +476,22 @@ var Ice = (function () {
         },
         dispose: function () {}
       };
-      function through(material, one, two, at, dt) {
-        var u = material.uniforms, a = u.tScene1.value, b = u.tScene2.value, p = u.uProgress.value, t = u.tDetail.value;
+      function through(material, one, two) {
+        var u = material.uniforms, a = u.tScene1.value, b = u.tScene2.value, t = u.tDetail.value;
         var back = renderer.getRenderTarget(), auto = renderer.autoClear, was = plane.material;
         renderer.autoClear = false;
-        u.tScene1.value = one; u.tScene2.value = two; u.tDetail.value = dt || everything.texture;
-        if (at !== undefined) u.uProgress.value = at;
+        u.tScene1.value = one; u.tScene2.value = two; u.tDetail.value = everything.texture;
         plane.material = material;
         renderer.setRenderTarget(matte);
         renderer.render(plane, ig.he.renderPass.camera);
         plane.material = was;
-        u.tScene1.value = a; u.tScene2.value = b; u.uProgress.value = p; u.tDetail.value = t;
+        u.tScene1.value = a; u.tScene2.value = b; u.tDetail.value = t;
         renderer.setRenderTarget(back);
         renderer.autoClear = auto;
       }
       return {
         nothing: nothing.texture,
-        everything: everything.texture,
         pass: pass,
-        mask: function (material, one, two, at) { pass.enabled = true; through(material, one, two, at); },
         update: function (page, pageOnTop) {
           pass.enabled = page;
           if (!page) return;

@@ -1,8 +1,9 @@
 /* ============================================================================
    THE PRESENTATION — it goes as PowerPoint goes: a click, the space bar or an
    arrow key is the next step, back is the one before. Nothing scrolls and
-   there is no pointer. The slides on paper hand over to each other with
-   Groove Dynamics' diagonal cut; into the ice and out again, and into the
+   there is no pointer. On paper there is one thing at a time, in the middle:
+   a click brings the next into focus, and between two subjects Groove
+   Dynamics' diagonal cut hands over. Into the ice and out again, and into the
    inside of a block at the end, igloo's own cut carries the screen.
    ========================================================================== */
 (function () {
@@ -42,28 +43,120 @@
     glows: [
       { name: 'social', text: 'Social Engineering', align: 'left', size: function (W, H) { return H * 0.046; }, at: function (W, H) { return [W * 0.6, H * 0.5]; } },
       { name: 'hardware', text: 'Hardware', align: 'left', size: function (W, H) { return H * 0.046; }, at: function (W, H) { return [W * 0.6, H * 0.5]; } },
-      { name: 'danke', text: '////// Danke', align: 'center', size: function (W, H) { return H * 0.02; }, at: function (W, H) { return [W / 2, H * 0.4]; } },
-      { name: 'fragen', text: 'Fragen?', align: 'center', size: function (W, H) { return H * 0.1; }, at: function (W, H) { return [W / 2, H * 0.52]; } }
+      { name: 'danke', text: '////// Danke', align: 'center', size: function (W, H) { return H * 0.02; }, soft: true, at: function (W, H) { return [W / 2, H * 0.4]; } },
+      { name: 'fragen', text: 'Fragen?', align: 'center', size: function (W, H) { return H * 0.1; }, soft: true, at: function (W, H) { return [W / 2, H * 0.52]; } }
     ]
   });
 
+  /* ---- the slides on paper ---- */
+  var pages = {};
+  $$('.page').forEach(function (el) {
+    pages[el.getAttribute('data-page')] = el;
+    el.__focus = $$('.focus', el);
+  });
+
+  /* A word goes into letters, a sentence into words, each with its distance
+     from the middle, so they can come into focus from the middle out. Set one
+     by one, letters lose their kerning; it is measured here and given back. */
+  function letters(line) {
+    var text = line.firstChild, chars = Array.from(text.nodeValue), mid = (chars.length - 1) / 2;
+    var made = chars.map(function (ch, i) {
+      var c = document.createElement('span');
+      c.className = 'c';
+      c.textContent = ch === ' ' ? '\u00A0' : ch;
+      c.setAttribute('data-g', ch);
+      c.style.setProperty('--o', (i - mid).toFixed(2));
+      c.style.setProperty('--a', Math.abs(i - mid).toFixed(2));
+      c.style.setProperty('--k', i);
+      c.style.setProperty('--r', (((Math.sin((i + 1) * 12.9898) * 43758.5453) % 1 + 1) % 1).toFixed(3));
+      return c;
+    });
+    made.forEach(function (c) { line.insertBefore(c, text); });
+    line.removeChild(text);
+    return made;
+  }
+  function words(sent) {
+    var at = 0;
+    Array.from(sent.childNodes).forEach(function (node) {
+      var key = node.nodeType === 1, box = document.createDocumentFragment();
+      /* what matters stays in one piece, whatever the line breaks do */
+      (key ? [node.textContent] : node.textContent.split(/(\s+)/)).forEach(function (w) {
+        if (!w) return;
+        if (!w.trim()) { box.appendChild(document.createTextNode(' ')); return; }
+        var c = document.createElement('span');
+        c.className = 'c' + (key ? ' key' : '');
+        c.textContent = w;
+        c.style.setProperty('--a', at++);
+        box.appendChild(c);
+      });
+      sent.replaceChild(box, node);
+    });
+  }
+  function kern(line, made) {
+    var size = parseFloat(getComputedStyle(line).fontSize);
+    var probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+    line.appendChild(probe);
+    var width = function (t) { probe.textContent = t; return probe.getBoundingClientRect().width; };
+    made.forEach(function (c, i) {
+      if (!i) return;
+      var a = made[i - 1].getAttribute('data-g'), b = c.getAttribute('data-g');
+      c.style.marginLeft = ((width(a + b) - width(a) - width(b)) / size).toFixed(4) + 'em';
+    });
+    /* two letters that will change places are told how far they have to go */
+    var swap = line.getAttribute('data-swap');
+    if (swap) {
+      var pair = swap.split(',').map(Number), one = made[pair[0]], two = made[pair[1]];
+      one.classList.add('sw1'); two.classList.add('sw2');
+      one.style.setProperty('--dx', (width(two.getAttribute('data-g')) / size).toFixed(4) + 'em');
+      two.style.setProperty('--dx', (-width(one.getAttribute('data-g')) / size).toFixed(4) + 'em');
+    }
+    probe.remove();
+    /* dots stand at even distances, whatever the letters under them were */
+    if (line.classList.contains('dots')) {
+      var last = made[made.length - 1], left = made[0].offsetLeft, full = last.offsetLeft + last.offsetWidth - left;
+      made.forEach(function (c, i) {
+        var want = left + (i + 0.5) / made.length * full;
+        c.style.setProperty('--dot', ((want - c.offsetLeft - c.offsetWidth / 2) / size).toFixed(4) + 'em');
+      });
+    }
+  }
+  var lines = $$('.line').map(function (line) {
+    var word = line.parentNode, made = letters(line);
+    word.style.setProperty('--n', Math.max(+word.style.getPropertyValue('--n') || 0, made.length));
+    return { line: line, made: made };
+  });
+  $$('.sent').forEach(words);
+  /* the flood: small requests over the whole screen, the middle left free */
+  $$('.flood').forEach(function (box) {
+    var said = box.getAttribute('data-word'), html = '', cols = 21, rows = 15;
+    for (var y = 0; y < rows; y++) for (var x = 0; x < cols; x++) {
+      var px = (x + 0.5) / cols, py = (y + 0.5) / rows;
+      if (Math.abs(px - 0.5) < 0.31 && Math.abs(py - 0.5) < 0.3) continue;
+      var r = ((Math.sin((x * 31 + y * 17 + 1) * 12.9898) * 43758.5453) % 1 + 1) % 1;
+      html += '<i style="left:' + (px * 100).toFixed(2) + '%;top:' + (py * 100).toFixed(2) + '%;--r:' + r.toFixed(3) + '">' + said + '</i>';
+    }
+    box.innerHTML = html;
+  });
+  /* how far the mark steps aside: half of what comes out of it */
+  function shift() { $('.lockup').style.setProperty('--shift', ($('.lockup-word').offsetWidth / 2).toFixed(2) + 'px'); }
+  addEventListener('resize', shift);
+
   /* ---- the steps ----
-     page:   a slide on paper (after: the one after the ice)
+     page:   a slide on paper, focus: which of its things is in the middle
+             (after: the slide comes after the ice)
      block:  a block of ice in the middle, open: and into it
      inside: the inside of an empty block, at the end
      shine:  the words that come on as igloo's mark does */
-  var steps = [
-    { page: 'mark' },
-    { page: 'hacken' },
-    { page: 'phish' },
-    { block: 0, shine: ['social'] },
-    { block: 0, open: 0 },
-    { block: 1, shine: ['hardware'] },
-    { block: 1, open: 1 },
-    { page: 'server', after: true },
-    { page: 'schutz', after: true },
-    { inside: true, shine: ['danke', 'fragen'] }
-  ];
+  function sheets(name, after) {
+    return pages[name].__focus.map(function (_, i) { return { page: name, focus: i, after: !!after }; });
+  }
+  var steps = [{ page: 'mark' }].concat(
+    sheets('hacken'), sheets('phish'),
+    [{ block: 0, shine: ['social'] }, { block: 0, open: 0 }, { block: 1, shine: ['hardware'] }, { block: 1, open: 1 }],
+    sheets('server', true), sheets('schutz', true),
+    [{ inside: true, shine: ['danke', 'fragen'] }]
+  );
   function place(s) {
     var p = ice.places();
     if (s.page) return p.pages[s.after ? 1 : 0];
@@ -71,21 +164,46 @@
     return p.inside;
   }
 
-  /* ---- the slides on paper ---- */
-  var pages = {};
-  $$('.page').forEach(function (el) { pages[el.getAttribute('data-page')] = el; });
   var pageNow = null;
   function reset(el) { el.style.clipPath = ''; el.style.transform = ''; el.style.zIndex = ''; }
+  /* a thing in focus plays its small scene once it has arrived, and keeps it until it has left */
+  function arm(el) {
+    clearTimeout(el.__act);
+    el.classList.remove('is-act');
+    el.__act = setTimeout(function () { el.classList.add('is-act'); }, (+el.getAttribute('data-act') || 2.4) * 1000);
+  }
+  function disarm(el, after) {
+    clearTimeout(el.__act);
+    el.__act = setTimeout(function () { el.classList.remove('is-act'); }, after);
+  }
+  function focus(name, i) {
+    pages[name].__focus.forEach(function (el, k) {
+      var on = el.classList.contains('is-on');
+      if (k === i && !on) {
+        el.classList.add('is-on');
+        if (pages[name].classList.contains('is-in')) arm(el);
+      } else if (k !== i && on) {
+        el.classList.remove('is-on');
+        disarm(el, 450);
+      }
+    });
+  }
   function setPage(name) {
     Object.keys(pages).forEach(function (k) {
       var el = pages[k], on = k === name;
       reset(el);
       el.classList.toggle('is-live', on);
-      if (!on) el.classList.remove('is-in');
+      if (!on) { el.classList.remove('is-in'); el.__focus.forEach(function (f) { disarm(f, 0); }); }
     });
     pageNow = name;
   }
-  function come(name, delay) { setTimeout(function () { if (pageNow === name) pages[name].classList.add('is-in'); }, (delay || 0) * 1000); }
+  function arrive(name) {
+    var page = pages[name];
+    if (page.classList.contains('is-in')) return;
+    page.classList.add('is-in');
+    page.__focus.forEach(function (f) { if (f.classList.contains('is-on')) arm(f); });
+  }
+  function come(name, delay) { setTimeout(function () { if (pageNow === name) arrive(name); }, (delay || 0) * 1000); }
 
   /* Groove Dynamics' hand-over between two slides (src/stage/stage.js): a
      diagonal that climbs the screen, the next slide below it, the last one
@@ -124,7 +242,7 @@
         paint(o, l, c);
         if (k < 1) { requestAnimationFrame(step); return; }
         setPage(to);
-        pages[to].classList.add('is-in');
+        arrive(to);
         done();
       })(t0);
     });
@@ -139,7 +257,9 @@
     var chain = Promise.resolve();
     if (opened !== null && s.open !== opened) chain = chain.then(function () { return ice.close(); }).then(function () { opened = null; });
     chain = chain.then(function () {
+      if (s.page && s.focus !== undefined) focus(s.page, s.focus);
       if (s.page && !moving && pageNow !== s.page) return turn(pageNow, s.page, forward);
+      if (s.page && !moving) return wait(0.3);
       if (s.page && moving) { setPage(s.page); come(s.page, 0.9); }
       if (s.inside) ice.empty();
       if (!moving) return;
@@ -192,27 +312,40 @@
     if (tries < 100) setTimeout(function () { office(tries + 1); }, 100);
   })(0);
 
-  /* ---- the curtain: down until the scenes are warm; then igloo's cut, bent
-     into a circle, opens it from the middle onto the first slide ---- */
+  /* ---- the curtain: the mark, breathing, until the scenes are warm. Then the
+     mark takes a last full breath and stops, the curtain is gone without
+     anyone seeing it (the first slide has the mark in the same place), and
+     the mark steps aside for the word that comes out of it ---- */
   var pre = $('#pre'), t0 = performance.now();
   setPage('mark');
   function lift() {
-    pages.mark.classList.add('is-in');
-    if (pre.animate) pre.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 700, easing: 'cubic-bezier(.455,.03,.515,.955)', fill: 'forwards' }).onfinish = function () { pre.style.display = 'none'; };
-    else pre.style.display = 'none';
-    opening = false;
+    var mark = $('svg', pre), now = getComputedStyle(mark).opacity;
+    mark.style.animation = 'none';
+    mark.style.opacity = now;
+    mark.getBoundingClientRect();
+    mark.style.transition = 'opacity .55s var(--e-soft)';
+    mark.style.opacity = '1';
+    wait(0.7).then(function () {
+      pre.style.display = 'none';
+      arrive('mark');
+      opening = false;
+    });
   }
-  Promise.all([ice.ready, document.fonts ? document.fonts.ready : null]).then(function () {
+  /* the paper's words are only measured once their type is there */
+  var type = (document.fonts ? Promise.all([
+    document.fonts.load('500 64px "Inter Tight"', 'Hacken'),
+    document.fonts.load('600 64px "Inter Tight"', 'Hacken'),
+    document.fonts.load('500 16px "IBM Plex Mono"', '/// 01')
+  ]).catch(function () {}) : Promise.resolve()).then(function () {
+    lines.forEach(function (l) { kern(l.line, l.made); });
+    shift();
+  });
+  Promise.all([ice.ready, type]).then(function () {
     window.__deck = { next: next, prev: prev, at: function () { return at; }, steps: steps, ice: ice, ready: true };
-    setTimeout(function () {
-      ice.plunge({
-        dur: 1.3,
-        begin: function () { pre.style.display = 'none'; come('mark', 0.5); }
-      }).then(function (went) { if (!went) lift(); else opening = false; });
-    }, Math.max(0, 1100 - (performance.now() - t0)));
+    setTimeout(lift, Math.max(0, 1100 - (performance.now() - t0)));
   }, function (err) {
     console.error('[DECK] ' + err.message);
     window.__deck = { failed: true, next: next, prev: prev };
-    lift();
+    type.then(lift);
   });
 })();
