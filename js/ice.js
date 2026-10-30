@@ -224,8 +224,10 @@ var Ice = (function () {
         }
       });
 
-      /* the room asks for its links' volumes by name: our shapes are in its cache before it does */
-      ig.Be.links = shapes.map(function (shape) {
+      /* The room asks for its links' volumes by name: our shapes are in its cache
+         before it does. The first is nothing at all: inside it, no surface draws
+         the particles anywhere and they hang in their cloud, as they start out. */
+      ig.Be.links = [{ name: 'nothing', data: new Uint8Array([128, 128, 128, 0]), size: 1, scale: 1 }].concat(shapes).map(function (shape) {
         var volume = new ig.DA(shape.data, shape.size, shape.size, shape.size);
         volume.minFilter = volume.magFilter = 1006;
         volume.wrapS = volume.wrapT = volume.wrapR = 1001;
@@ -314,6 +316,7 @@ var Ice = (function () {
       particles.mesh.material.uniforms.uColorLight.value.set('#eceef2');
       particles.mesh.material.uniforms.uColorDark.value.set('#2c2e34');
       particles.mesh.material.uniforms.uColorFast.value.set('#ffffff');
+      particles.mesh.material.uniforms.uColorInitial.value.set('#c4c7cd');
       particles.mesh.computationMaterial.uniforms.tVolume.value = particles.vdbs[0];
       particles.mesh.computationMaterial.uniforms.uVolumeScale.value = particles.vdbScales[0];
       /* the room's last pass, its own colour: its blue mostly out, its glare off the words, and
@@ -635,14 +638,45 @@ var Ice = (function () {
       });
     };
 
+    /* Into the room: the particles are there first, as a white cloud that comes
+       up out of nothing, and then they assemble. It is igloo's own way in (its
+       timeline): alpha up, the noise falls away, the white goes last. Here it
+       runs by the clock, since no one scrolls. */
+    var assembling = null, fading = [];
+    function shapeUp(particles, u, i) {
+      particles.currentLink = i + 1;
+      u.tVolume.value = particles.vdbs[i + 1];
+      u.uVolumeScale.value = particles.vdbScales[i + 1];
+    }
+    api.gather = function (i, after) {
+      var particles = room.containerparticles, u = particles.mesh.computationMaterial.uniforms, m = particles.mesh.material.uniforms;
+      if (assembling) assembling.kill();
+      fading.forEach(function (t) { t.kill(); });
+      m.uAlpha.value = 0; m.uInitialGlow.value = 0.62; u.uShowNoise.value = 1;
+      fading = [
+        ig.re.to(m.uAlpha, { value: 1, duration: 1.4, ease: 'power2.inOut' }),
+        ig.re.to(u.uShowNoise, { value: 0, duration: 1.6, delay: after, ease: 'power1.inOut' }),
+        ig.re.to(m.uInitialGlow, { value: 0, duration: 1.2, delay: after + 0.4, ease: 'power1.inOut' })
+      ];
+      assembling = ig.re.delayedCall(after, function () { assembling = null; shapeUp(particles, u, i); });
+    };
+    /* out of the room: nothing holds them any more, and they come apart as the cut carries the room away */
+    api.scatter = function () {
+      var particles = room.containerparticles, u = particles.mesh.computationMaterial.uniforms;
+      if (assembling) { assembling.kill(); assembling = null; }
+      fading.forEach(function (t) { t.kill(); });
+      particles.currentLink = 0;
+      u.tVolume.value = particles.vdbs[0];
+      u.uVolumeScale.value = particles.vdbScales[0];
+      fading = [ig.re.to(u.uShowNoise, { value: 1, duration: 0.9, ease: 'power1.in' })];
+    };
     /* the particles gather into another shape, as igloo's do when its link changes (its changeLink) */
     api.form = function (i) {
       var particles = room.containerparticles, u = particles.mesh.computationMaterial.uniforms;
-      if (particles.currentLink === i) return;
-      particles.currentLink = i;
+      if (assembling) { assembling.kill(); assembling = null; }
+      if (particles.currentLink === i + 1) return;
       ig.re.fromTo(u.uAdditionalNoise, { value: 1 }, { value: 0, duration: 0.5, ease: 'power2.inOut', overwrite: true });
-      u.tVolume.value = particles.vdbs[i];
-      u.uVolumeScale.value = particles.vdbScales[i];
+      shapeUp(particles, u, i);
       ig.re.to(room.floor, { additionalTime: room.floor.additionalTime + 4, duration: 3, ease: 'power4.out', overwrite: true });
       particles.soundControl.splatTargetVelocity += 1;
     };

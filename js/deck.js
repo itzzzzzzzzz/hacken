@@ -131,21 +131,28 @@
   function shift() { $('.lockup').style.setProperty('--shift', ($('.lockup-word').offsetWidth / 2).toFixed(2) + 'px'); }
   addEventListener('resize', shift);
 
-  /* ---- one step to another ---- */
+  /* ---- one step to another ----
+     Into the room: the cloud is seen first; this long after the click it starts to assemble */
+  var GATHER = 1.5;
   var at = 0, want = 0, running = false, opened = null, opening = true, lit = {};
   function settle(from, to) {
     var s = steps[to], y = place(s), moving = Math.abs(ice.scroll.y - y) > 0.001;
+    var entering = s.room !== undefined && moving, leaving = steps[from].room !== undefined && moving && !entering;
     var shine = s.shine || [];
     Object.keys(lit).forEach(function (k) { if (lit[k] && shine.indexOf(k) < 0) { ice.shine(k, false); lit[k] = false; } });
     var chain = Promise.resolve();
     if (opened !== null && s.open !== opened) chain = chain.then(function () { return ice.close(); }).then(function () { opened = null; });
     chain = chain.then(function () {
-      if (s.form !== undefined) ice.form(s.form);
+      if (entering) ice.gather(s.form, GATHER);
+      else if (s.form !== undefined) ice.form(s.form);
+      if (leaving) ice.scatter();
       if (s.inside) ice.empty();
       if (!moving) return wait(0.35);
       var d = Math.abs(ice.scroll.y - y);
       return ice.glide(y, d <= 1.05 ? 1.9 : 3.0);
     });
+    /* the words wait until the figure stands */
+    if (entering) chain = chain.then(function () { return wait(1.2); });
     if (s.open !== undefined) chain = chain.then(function () { if (opened !== s.open) { opened = s.open; return ice.open(s.open); } });
     return chain.then(function () {
       if (steps[want] !== s) return;

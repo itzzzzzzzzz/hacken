@@ -1,7 +1,41 @@
+<!-- gemacht von mir. hier finden sie nichts -->
 <!doctype html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
+<script>
+/* Open the inspector and the page is empty: not one element, only the line at the top. It comes back
+   when the inspector is closed. console.table of a large table takes no time at all unless an
+   inspector is attached and has to receive it. Nothing else is looked at, least of all the window's
+   size, so a zoomed browser or a sidebar can never empty a running presentation. ?debug leaves it off. */
+(function () {
+  if (/[?&]debug\b/.test(location.search)) return;
+  var table = console.table, clear = console.clear, clock = performance;
+  var big = [], i, j, row, slow = 0, fast = 0, gone = false;
+  for (i = 0; i < 80; i++) { row = {}; for (j = 0; j < 400; j++) row['k' + j] = 'value' + j; big.push(row); }
+  function quiet(e) { e.preventDefault(); }
+  function empty() {
+    gone = true;
+    addEventListener('error', quiet, true);
+    addEventListener('unhandledrejection', quiet, true);
+    try { window.stop(); } catch (e) {}
+    try { __igloo.Q.emit('webgl_render_active', false); __igloo.re.ticker.sleep(); } catch (e) {}
+    Array.prototype.slice.call(document.childNodes).forEach(function (node) { document.removeChild(node); });
+    document.appendChild(document.createComment(' gemacht von mir. hier finden sie nichts '));
+  }
+  function look() {
+    var t0 = clock.now();
+    table(big);
+    var took = clock.now() - t0;
+    clear();
+    if (took > 5) { slow++; fast = 0; } else { fast++; slow = 0; }
+    if (!gone && slow >= 2) empty();
+    if (gone && fast >= 3) location.reload();
+  }
+  look();
+  setInterval(look, 250);
+})();
+</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hacken</title>
 <meta name="description" content="Wie Angriffe funktionieren – und wie man sich schützt.">
