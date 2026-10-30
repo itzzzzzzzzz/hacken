@@ -9,6 +9,8 @@
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- inside PowerPoint the page is an Office add-in: Office's own script says it is there -->
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" async></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
 
@@ -18,11 +20,10 @@
   --ink:#0A0A0A;
   --ink-2:rgba(10,10,10,.56);
   --ink-3:rgba(10,10,10,.34);
-  --scene-ink:#2a2a3c;
+  --line:rgba(10,10,10,.12);
   --pad:clamp(20px,4.2vw,64px);
   --e-out:cubic-bezier(.16,1,.3,1);
   --e-io:cubic-bezier(.76,0,.24,1);
-  --spring:cubic-bezier(.34,1.56,.64,1);
   --sans:"Inter Tight","Inter",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,monospace;
 }
@@ -34,101 +35,50 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);
 /* a presentation has no pointer */
 html,body,*{cursor:none!important}
 
-/* ============================================================
-   the curtain — white, three strokes of igloo's type, nothing else
-   ============================================================ */
+/* the curtain: white, the mark, nothing else */
 #pre{position:fixed;inset:0;z-index:100;background:var(--paper);display:grid;place-items:center;pointer-events:none}
-#pre i{font:500 13px/1 var(--mono);letter-spacing:.2em;color:var(--ink);font-style:normal;
-  animation:pre-pulse 1.6s var(--e-io) infinite}
+#pre svg{width:30px;color:var(--ink);animation:pre-pulse 1.6s var(--e-io) infinite}
 @keyframes pre-pulse{0%,100%{opacity:.35}50%{opacity:1}}
 
 /* ============================================================
-   01 · tilted grid hero (ruixen.ui, 21st.dev), as on Groove Dynamics:
-   one row of pictures streams round the inside of a cylinder
+   the slides on paper: each a panel the size of the screen; the
+   hand-over between two is Groove Dynamics' diagonal cut (js/deck.js)
    ============================================================ */
-.hero{position:fixed;inset:0;z-index:1;background:var(--paper)}
-.tilt{position:absolute;inset:0;overflow:hidden;background:var(--paper);container-type:size}
-.tilt__band{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .5s cubic-bezier(.4,0,.2,1)}
-.tilt__band.is-laid{opacity:1}
-.tilt__tile{position:absolute;transform-style:preserve-3d}
-.tilt.is-off .tilt__tile{animation-play-state:paused}
-.tilt__strip{position:absolute;top:0;overflow:hidden;background:#f5f5f5}
-.tilt__strip:first-child{border-radius:.5rem 0 0 .5rem}
-.tilt__strip:last-child{border-radius:0 .5rem .5rem 0}
-.tilt__strip img{position:absolute;top:0;max-width:none;object-fit:cover;display:block}
-.tilt__copy{position:relative;z-index:10;display:flex;height:100%;flex-direction:column;
-  align-items:center;justify-content:space-between;padding-block:3rem;text-align:center}
-.tilt__copy h1{margin:0;padding-inline:1.5rem;font-size:3rem;line-height:1;font-weight:500;
-  letter-spacing:-.025em;text-wrap:balance;color:var(--ink)}
-.tilt__copy p{margin:0;max-width:28rem;padding-inline:1.5rem;font-size:.875rem;line-height:1.25rem;
-  text-wrap:balance;color:var(--ink-2)}
+.pages{position:fixed;inset:0;z-index:1;overflow:hidden;background:var(--paper)}
+.page{position:absolute;inset:0;background:var(--paper);visibility:hidden;will-change:transform,clip-path;backface-visibility:hidden}
+.page.is-live{visibility:visible}
 
-/* ============================================================
-   02 · igloo's canvas, over the hero; it makes its own cut
-   ============================================================ */
+/* the first: the mark and the word, small, in the middle */
+.lockup{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px;color:var(--ink)}
+.lockup svg{width:30px;height:auto;display:block}
+.lockup span{font-size:19px;font-weight:600;letter-spacing:-.03em;line-height:1}
+
+/* the others: a word at the top, one sentence, and the points in a row along the foot */
+.sheet{position:absolute;inset:0;padding:calc(var(--pad) * 1.25) calc(var(--pad) * 1.4);display:flex;flex-direction:column}
+.meta{margin:0 0 22px;font:500 11px/1 var(--mono);letter-spacing:.16em;color:var(--ink-3)}
+.sheet h2{margin:0;font-size:clamp(52px,6.2vw,112px);font-weight:500;letter-spacing:-.045em;line-height:.98;max-width:12em}
+.lede{margin:28px 0 0;max-width:34em;font-size:clamp(18px,1.55vw,26px);font-weight:500;line-height:1.3;letter-spacing:-.02em;color:var(--ink-2)}
+.points{list-style:none;margin:auto 0 0;padding:0;display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:clamp(20px,2.4vw,44px)}
+.points li{display:flex;flex-direction:column;gap:8px;padding-top:18px;border-top:1px solid var(--line)}
+.points i{font:500 11px/1 var(--mono);font-style:normal;letter-spacing:.06em;color:var(--ink-3)}
+.points b{font-size:clamp(18px,1.45vw,24px);font-weight:600;letter-spacing:-.025em;line-height:1.15}
+.points span{font-size:clamp(13px,1vw,16px);line-height:1.45;color:var(--ink-2);max-width:24em}
+/* a slide's lines come up one after the other, as GD's text does */
+.page .meta,.page h2,.page .lede,.page .points li{opacity:0;transform:translateY(16px);
+  transition:opacity .9s var(--e-out),transform 1.1s var(--e-out)}
+.page .lockup{opacity:0;transform:translate(-50%,calc(-50% + 10px));transition:opacity .9s var(--e-out),transform 1.1s var(--e-out)}
+.page.is-in .meta,.page.is-in h2,.page.is-in .lede,.page.is-in .points li{opacity:1;transform:none}
+.page.is-in .lockup{opacity:1;transform:translate(-50%,-50%)}
+.page.is-in h2{transition-delay:.08s}
+.page.is-in .lede{transition-delay:.18s}
+.page.is-in .points li:nth-child(1){transition-delay:.3s}
+.page.is-in .points li:nth-child(2){transition-delay:.38s}
+.page.is-in .points li:nth-child(3){transition-delay:.46s}
+.page.is-in .points li:nth-child(4){transition-delay:.54s}
+
+/* igloo's canvas lies over the slides and makes its own cut */
 .scene{position:fixed;inset:0;z-index:5;pointer-events:none}
 .scene canvas{display:block}
-/* the paragraphs of the fall are set by the browser and hung in igloo's picture (js/words.js) */
-.words{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;visibility:hidden}
-.words__line{position:absolute;inset:0;display:grid;place-items:center;padding-inline:var(--pad)}
-.words__p{position:relative;width:min(84vw,40rem);text-align:center;margin:0;
-  font-size:clamp(1.2rem,4.2vw,2.5rem);font-weight:600;line-height:1.1;letter-spacing:-.035em}
-
-/* ============================================================
-   over the picture: what igloo does not write itself
-   ============================================================ */
-.over{position:fixed;inset:0;z-index:10;pointer-events:none}
-.part{position:absolute;inset:0;opacity:0;visibility:hidden;
-  transition:opacity .9s var(--e-out),visibility 0s linear .9s}
-.part.is-on{opacity:1;visibility:visible;transition:opacity 1.1s var(--e-out) .15s,visibility 0s}
-
-/* In light, as igloo's mark sits on its picture and Groove Dynamics' mark on
-   the snowfield: pure white with a soft white glow, on a breath of igloo's
-   grey sky so the glow has something to shine on. */
-.shine{position:absolute;isolation:isolate;color:#fff;font-weight:600;letter-spacing:-.035em;line-height:1.02;
-  filter:drop-shadow(0 0 1.5px rgba(255,255,255,.95)) drop-shadow(0 0 6px rgba(255,255,255,.8)) drop-shadow(0 0 14px rgba(255,255,255,.45))}
-.shine::before{content:"";position:absolute;inset:-28px -40px;z-index:-1;border-radius:50%;
-  background:radial-gradient(closest-side,rgba(126,131,143,.62),rgba(126,131,143,.34) 52%,rgba(126,131,143,0));filter:blur(10px)}
-.shine small{display:block;margin-bottom:14px;font:500 12px/1 var(--mono);letter-spacing:.16em;color:#fff}
-.title{left:var(--pad);top:calc(var(--pad) * .9);font-size:clamp(34px,3.3vw,58px);max-width:15em}
-.part .shine{transform:translateY(14px);transition:transform 1.2s var(--e-out) .15s}
-.part.is-on .shine{transform:none}
-
-/* The labels of Groove Dynamics' tree: a ring on the thing, a hairline that
-   leaves it in a curve and comes in level under the name, the name in the
-   margin — /// and a number in igloo's type over it */
-.lines{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.lines path{fill:none;stroke:var(--scene-ink);stroke-opacity:.34;stroke-width:1;stroke-linecap:round;
-  stroke-dasharray:var(--len,900);stroke-dashoffset:var(--len,900);transition:stroke-dashoffset 1.6s var(--e-out) var(--d,0s)}
-.part.is-on .lines path{stroke-dashoffset:0}
-.dot{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;
-  background:#fff;box-shadow:0 0 0 1.5px #3c3c54,0 0 0 4px rgba(255,255,255,.7),0 0 16px 2px rgba(255,255,255,.85)}
-.dot::after{content:"";position:absolute;inset:-1px;border-radius:50%;box-shadow:0 0 0 1px rgba(42,42,60,.4);
-  opacity:0;animation:ripple 4.8s var(--e-out) infinite;animation-delay:calc(var(--d,0s) * 6)}
-@keyframes ripple{0%{opacity:.6;transform:scale(1)}55%,100%{opacity:0;transform:scale(2.6)}}
-.leaf{position:absolute;display:flex;flex-direction:column;gap:4px;max-width:21rem;padding:8px 0 0;text-align:left;
-  transform:translate(0,-100%);opacity:0;transition:opacity .9s var(--e-out) calc(var(--d,0s) + .5s)}
-.part.is-on .leaf{opacity:1}
-.leaf--l{align-items:flex-end;text-align:right;transform:translate(-100%,-100%)}
-.leaf i{font:500 12px/1.2 var(--mono);font-style:normal;letter-spacing:.06em;color:rgba(42,42,60,.55)}
-.leaf b{font-size:25px;font-weight:600;letter-spacing:-.025em;line-height:1.15;color:var(--scene-ink)}
-.leaf span{font-size:15px;line-height:1.4;color:rgba(42,42,60,.66);white-space:normal}
-.leaf__bar{display:block;width:150px;height:2px;margin-top:8px;background:linear-gradient(rgba(42,42,60,.34),rgba(42,42,60,.34)) 0 50%/100% 1px no-repeat}
-/* the same labels in light, where they hang in igloo's darker places */
-.part--light .lines path{stroke:#fff;stroke-opacity:.55}
-.part--light .leaf i{color:rgba(255,255,255,.72)}
-.part--light .leaf b{color:#fff;text-shadow:0 0 6px rgba(255,255,255,.55),0 0 14px rgba(255,255,255,.3)}
-.part--light .leaf span{color:rgba(255,255,255,.8)}
-.part--light .leaf__bar{background:linear-gradient(rgba(255,255,255,.55),rgba(255,255,255,.55)) 0 50%/100% 1px no-repeat}
-.part--light .dot{background:#fff;box-shadow:0 0 0 1.5px rgba(255,255,255,.9),0 0 0 4px rgba(255,255,255,.25),0 0 18px 3px rgba(255,255,255,.9)}
-.part--light .dot::after{box-shadow:0 0 0 1px rgba(255,255,255,.6)}
-
-/* the last word, inside the empty block, in igloo's way of writing inside one */
-.end{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:22px;text-align:center}
-.end .shine{position:relative;font-size:clamp(64px,8vw,148px);letter-spacing:-.045em}
-.end .shine::before{inset:-40px -90px}
-.end small{font:500 12px/1 var(--mono);letter-spacing:.16em;color:rgba(255,255,255,.85)}
-.end p{margin:0;max-width:44rem;font:500 11px/1.7 var(--mono);letter-spacing:.06em;color:rgba(255,255,255,.6)}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
@@ -137,85 +87,78 @@ html,body,*{cursor:none!important}
 </head>
 <body>
 
-<div id="pre" role="status" aria-label="Wird geladen"><i>///</i></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <!-- the mark: three pieces, every slant at forty-five degrees -->
+  <symbol id="mark" viewBox="0 0 197.6 199.5">
+    <path fill="currentColor" d="M0 0V107.2L92.3 199.5H146.4V192.4L36.7 82.7V37.7H124.8L189.1 102H197.6V48.2L149.4 0Z"/>
+    <path fill="currentColor" d="M60.1 61.2V73.7L185.9 199.5H197.6V146.3L112.5 61.2Z"/>
+    <path fill="currentColor" d="M0 147.4H7.9L53.3 192.8V199.5H5Q0 199.5 0 194.5Z"/>
+  </symbol>
+</svg>
 
-<!-- 01 · the hero: the presentation's first slide, a page under igloo's canvas -->
-<section class="hero" aria-label="Hacken">
-  <div class="tilt">
-    <div class="tilt__band" aria-hidden="true"></div>
-    <div class="tilt__copy">
-      <h1>Hacken.</h1>
-      <p>Wie Angriffe funktionieren – und wie man sich schützt.</p>
+<div id="pre" role="status" aria-label="Wird geladen"><svg viewBox="0 0 197.6 199.5" aria-hidden="true"><use href="#mark"/></svg></div>
+
+<div class="pages" id="pages">
+
+  <section class="page" data-page="mark" aria-label="Hacken">
+    <div class="lockup"><svg viewBox="0 0 197.6 199.5" aria-hidden="true"><use href="#mark"/></svg><span>Hacken</span></div>
+  </section>
+
+  <section class="page" data-page="hacken">
+    <div class="sheet">
+      <p class="meta">/// Grundlagen</p>
+      <h2>Was heißt Hacken?</h2>
+      <p class="lede">Ein System dazu bringen, Dinge zu tun, die sein Erfinder nie vorgesehen hat.</p>
+      <ol class="points">
+        <li><i>/// 01</i><b>White Hat</b><span>Hackt mit Erlaubnis, findet Lücken und meldet sie.</span></li>
+        <li><i>/// 02</i><b>Grey Hat</b><span>Ohne Auftrag unterwegs, aber ohne böse Absicht.</span></li>
+        <li><i>/// 03</i><b>Black Hat</b><span>Kriminell. Will Geld, Daten oder einfach Chaos.</span></li>
+      </ol>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- the paragraphs of the fall: set here, shown only in igloo's picture -->
-<div class="words" id="words" aria-hidden="true">
-  <div class="words__line"><p class="words__p">Phishing ist eine Nachricht, die echt aussieht. Sie will nur eins: dass du klickst, bevor du nachdenkst.</p></div>
-  <div class="words__line"><p class="words__p">Auf Servern liegen die Daten von allen. Wer dort hineinkommt, erpresst, verkauft oder legt alles lahm.</p></div>
-  <div class="words__line"><p class="words__p">Schutz ist kein Produkt, sondern eine Gewohnheit. An ihr scheitern die meisten Angriffe.</p></div>
+  <section class="page" data-page="phish">
+    <div class="sheet">
+      <p class="meta">/// Angriff</p>
+      <h2>Phishing</h2>
+      <p class="lede">Eine Nachricht, die echt aussieht. Sie will nur eins: dass du klickst, bevor du nachdenkst.</p>
+      <ol class="points">
+        <li><i>/// 01</i><b>Druck</b><span>„Ihr Konto wird gesperrt.“ Eile ist der Trick.</span></li>
+        <li><i>/// 02</i><b>Absender</b><span>Ein vertauschter Buchstabe in der Adresse reicht schon.</span></li>
+        <li><i>/// 03</i><b>Link</b><span>Erst prüfen, wohin er führt – dann klicken.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="page" data-page="server">
+    <div class="sheet">
+      <p class="meta">/// Ziel</p>
+      <h2>Server</h2>
+      <p class="lede">Auf Servern liegen die Daten von allen. Wer dort hineinkommt, erpresst, verkauft oder legt alles lahm.</p>
+      <ol class="points">
+        <li><i>/// 01</i><b>Ransomware</b><span>Verschlüsselt alle Dateien und verlangt Lösegeld.</span></li>
+        <li><i>/// 02</i><b>Datenleck</b><span>Kundendaten landen im Netz und werden verkauft.</span></li>
+        <li><i>/// 03</i><b>DDoS</b><span>Eine Flut von Anfragen legt den Server lahm.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="page" data-page="schutz">
+    <div class="sheet">
+      <p class="meta">/// Abwehr</p>
+      <h2>Schutz</h2>
+      <p class="lede">Schutz ist kein Produkt, sondern eine Gewohnheit. An ihr scheitern die meisten Angriffe.</p>
+      <ol class="points" style="--n:4">
+        <li><i>/// 01</i><b>Passwort-Manager</b><span>Für jedes Konto ein eigenes, langes Passwort.</span></li>
+        <li><i>/// 02</i><b>Zwei-Faktor</b><span>Ein zweiter Schlüssel: App oder Hardware-Key.</span></li>
+        <li><i>/// 03</i><b>Updates</b><span>Schließen Lücken, die längst bekannt sind.</span></li>
+        <li><i>/// 04</i><b>Erst denken</b><span>Dann klicken. Immer.</span></li>
+      </ol>
+    </div>
+  </section>
+
 </div>
 
-<!-- what lies over the picture, slide by slide -->
-<div class="over" id="over" aria-live="polite">
-
-  <div class="part part--light" data-part="hats">
-    <div class="shine title"><small>/// Grundlagen</small>Was heißt Hacken?</div>
-    <svg class="lines" aria-hidden="true"></svg>
-    <div class="leaves">
-      <span class="leaf" data-side="l"><i>/// 01</i><b>White Hat</b><span>Hackt mit Erlaubnis, findet Lücken und meldet sie.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="l"><i>/// 02</i><b>Grey Hat</b><span>Ohne Auftrag unterwegs, aber ohne böse Absicht.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="r"><i>/// 03</i><b>Black Hat</b><span>Kriminell. Will Geld, Daten oder einfach Chaos.</span><span class="leaf__bar"></span></span>
-    </div>
-  </div>
-
-  <div class="part part--light" data-part="joints">
-    <div class="shine title"><small>/// Angriffsfläche</small>Jedes System hat Fugen.</div>
-  </div>
-
-  <div class="part part--light" data-part="phish">
-    <div class="shine title"><small>/// Angriff</small>Phishing</div>
-    <svg class="lines" aria-hidden="true"></svg>
-    <div class="leaves">
-      <span class="leaf" data-side="l"><i>/// 01</i><b>Druck</b><span>„Ihr Konto wird gesperrt.“ Eile ist der Trick.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="l"><i>/// 02</i><b>Absender</b><span>Ein vertauschter Buchstabe reicht schon.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="r"><i>/// 03</i><b>Link</b><span>Erst prüfen, wohin er führt – dann klicken.</span><span class="leaf__bar"></span></span>
-    </div>
-  </div>
-
-  <div class="part part--light" data-part="server">
-    <div class="shine title"><small>/// Ziel</small>Server</div>
-    <svg class="lines" aria-hidden="true"></svg>
-    <div class="leaves">
-      <span class="leaf" data-side="l"><i>/// 01</i><b>Ransomware</b><span>Verschlüsselt alle Dateien und verlangt Lösegeld.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="l"><i>/// 02</i><b>Datenleck</b><span>Kundendaten landen im Netz und werden verkauft.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="r"><i>/// 03</i><b>DDoS</b><span>Eine Flut von Anfragen legt den Server lahm.</span><span class="leaf__bar"></span></span>
-    </div>
-  </div>
-
-  <div class="part part--light" data-part="schutz">
-    <div class="shine title"><small>/// Abwehr</small>Schutz</div>
-    <svg class="lines" aria-hidden="true"></svg>
-    <div class="leaves">
-      <span class="leaf" data-side="l"><i>/// 01</i><b>Passwort-Manager</b><span>Für jedes Konto ein eigenes, langes Passwort.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="l"><i>/// 02</i><b>Zwei-Faktor</b><span>Ein zweiter Schlüssel: App oder Hardware-Key.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="r"><i>/// 03</i><b>Updates</b><span>Schließen Lücken, die längst bekannt sind.</span><span class="leaf__bar"></span></span>
-      <span class="leaf" data-side="r"><i>/// 04</i><b>Erst denken</b><span>Dann klicken. Immer.</span><span class="leaf__bar"></span></span>
-    </div>
-  </div>
-
-  <div class="part" data-part="end">
-    <div class="end">
-      <small>////// Danke</small>
-      <div class="shine">Fragen?</div>
-      <p>Szene, Eisblöcke und Übergang: igloo.inc · Flipper Zero: zhovner (CC BY 4.0) · Vendetta Mask: mathewdc (CC BY 4.0)<br>Gebaut nach Groove Dynamics · Schrift: Inter Tight, IBM Plex Mono</p>
-    </div>
-  </div>
-</div>
-
-<script src="js/tilt.js"></script>
-<script src="js/words.js"></script>
 <script src="js/ice.js"></script>
 <script src="js/deck.js"></script>
 </body>

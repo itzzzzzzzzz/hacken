@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hacken as an Office content add-in: the presentation's page, live on a PowerPoint slide.
+     PowerPoint on Windows and Mac shows it in its own Edge / Safari engine, PowerPoint on the web in the browser;
+     in the slide show it is clicked through like the slides around it. -->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:type="ContentApp">
+  <Id>71637F9E-D040-4E4A-8A05-019723554D20</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>georg</ProviderName>
+  <DefaultLocale>de-DE</DefaultLocale>
+  <DisplayName DefaultValue="Hacken"/>
+  <Description DefaultValue="Die Präsentation Hacken, live auf einer Folie: igloos Eisblöcke, ihr Schnitt und ihr Licht."/>
+  <IconUrl DefaultValue="https://itzzzzzzzzz.github.io/hacken/office/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://itzzzzzzzzz.github.io/hacken/office/icon-80.png"/>
+  <SupportUrl DefaultValue="https://itzzzzzzzzz.github.io/hacken/"/>
+  <AppDomains>
+    <AppDomain>https://itzzzzzzzzz.github.io</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Presentation"/>
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://itzzzzzzzzz.github.io/hacken/index.html"/>
+    <RequestedWidth>960</RequestedWidth>
+    <RequestedHeight>540</RequestedHeight>
+  </DefaultSettings>
+  <Permissions>Restricted</Permissions>
+  <AllowSnapshot>true</AllowSnapshot>
+</OfficeApp>
