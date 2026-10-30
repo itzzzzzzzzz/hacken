@@ -1,9 +1,14 @@
 /* ============================================================================
    THE ICE — igloo.inc's own scenes, from igloo's own bundle, laid end to end
-   the way igloo's own controller lays them (its jF): a page, the two blocks
-   of ice, a page again, and the inside of a block. On a page the canvas is
-   clear and the slide under it shows; igloo's cut carries the screen from one
-   to the next, as it does between Groove Dynamics' hero and its ice.
+   the way igloo's own controller lays them (its jF): a page, the room at the
+   bottom of igloo.inc, the two blocks of ice, the room again, and the inside
+   of a block. On a page the canvas is clear and the slide under it shows;
+   igloo's cut carries the screen from one to the next.
+
+   The room is igloo's, its particles too: in igloo's room they gather into a
+   penguin, shaped by a volume, a distance field in a 3D texture. Here the
+   volumes are shapes of our own (assets/volumes), and they change as igloo's
+   change when you go through its links.
 
    Nothing is scrolled. The presentation says where to go next, and igloo's
    own glide takes the number there that igloo's wheel would have moved. The
@@ -16,11 +21,13 @@ var Ice = (function () {
 
   var BUNDLE_URL = 'assets/igloo/App3D-patched.js';
   /* how long a device may take to build the scenes before the presentation goes on without them */
-  var PATIENCE = 30;
+  var PATIENCE = 60;
   /* how far left of centre the blocks sit, in screen widths (igloo: 0.17) */
   var SHIFT = 0.17;
   /* the kinds of place in the line */
-  var PAGE = 'page', BLOCKS = 'cubes', INSIDE = 'detail';
+  var PAGE = 'page', ROOM = 'room', BLOCKS = 'cubes', INSIDE = 'detail';
+  /* how far down igloo's fall the room is: where igloo's own scroll comes to rest in it */
+  var IN_ROOM = 0.76;
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
@@ -45,9 +52,23 @@ var Ice = (function () {
     });
   }
 
+  /* a shape for the particles (tools: make_volumes.py): a distance field in the form of igloo's own volumes */
+  function readVolume(shape) {
+    return fetch('assets/volumes/' + shape.name + '.bin').then(function (r) {
+      if (!r.ok) throw new Error('not in assets/volumes');
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      var dv = new DataView(buf);
+      if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== 'GDV1') throw new Error('not a volume');
+      shape.size = dv.getUint32(4, true);
+      shape.data = new Uint8Array(buf, 8);
+    });
+  }
+
   function create(o) {
     var ig = null, box = null, board = null;
     var line = [], cubes = null, cubesComposer = null, detail = null, detailComposer = null, ui = null;
+    var room = null, roomComposer = null, shapes = o.shapes || [], WARM = 0;
     var cut = null, plane = null, clear = null;
     var figures = {}, glows = {};
     var scroll = { total: 0, targetY1: 0, targetY2: 0, y: 0, velocity: 0 };
@@ -95,7 +116,7 @@ var Ice = (function () {
     var wanted = (o.blocks || []).map(function (b) { return b && b.figure; }).filter(Boolean);
     Promise.all(wanted.map(function (name) {
       return readFigure(name).then(function (f) { figures[name] = f; }, function (err) { console.warn('[ICE] figure ' + name + ': ' + err.message); });
-    })).then(function () {
+    }).concat(shapes.map(readVolume))).then(function () {
       var script = document.createElement('script');
       script.src = BUNDLE_URL;
       script.onload = function () {
@@ -203,16 +224,30 @@ var Ice = (function () {
         }
       });
 
+      /* the room asks for its links' volumes by name: our shapes are in its cache before it does */
+      ig.Be.links = shapes.map(function (shape) {
+        var volume = new ig.DA(shape.data, shape.size, shape.size, shape.size);
+        volume.minFilter = volume.magFilter = 1006;
+        volume.wrapS = volume.wrapT = volume.wrapR = 1001;
+        volume.unpackAlignment = 1;
+        volume.needsUpdate = true;
+        volume._loaded = Promise.resolve(volume);
+        ig.le._texturesCache.set('volumes/' + shape.name + '.ktx2_<>_3d-data', volume);
+        return { title: shape.name, url: '', vdb: shape.name, scale: shape.scale };
+      });
+
       /* igloo's own way of setting its scenes up: a composer each */
       cubesComposer = new ig.tA({ scene: new ig.ty.cubes({ mainController: bridge }) });
       cubes = cubesComposer.passes[0].scene;
       bridge.scrollComposers = [cubesComposer, cubesComposer];
+      roomComposer = new ig.tA({ scene: new ig.ty.entry({ mainController: bridge }) });
+      room = roomComposer.passes[0].scene;
       detail = new ig.JF({ mainController: bridge });
       detailComposer = new ig.tA({ scene: detail });
       ui = new ig.GF({ mainController: bridge });
 
-      /* the line of places: pages, the blocks, the inside of a block */
-      var heights = { page: 1, cubes: cubes.height, detail: 1 };
+      /* the line of places: pages, the room, the blocks, the inside of a block */
+      var heights = { page: 1, room: 1, cubes: cubes.height, detail: 1 };
       var top = 0;
       line = (o.line || [PAGE, BLOCKS, PAGE, INSIDE]).map(function (kind) {
         var s = { kind: kind, height: heights[kind], top: top };
@@ -227,7 +262,7 @@ var Ice = (function () {
       plane.frustumCulled = false;
       board.add(plane);
 
-      Promise.all([cubes.uploaded, detail.uploaded, ui.uploaded, board._upload()]).then(function () {
+      Promise.all([cubes.uploaded, detail.uploaded, ui.uploaded, room.uploaded, board._upload()]).then(function () {
         /* Of igloo's own words on the screen the presentation keeps the text
            inside a block. igloo's mark, its sound switch, its hint to scroll
            and its close button belong to igloo's site. */
@@ -235,6 +270,7 @@ var Ice = (function () {
         var mark = ui.logo.mesh.material, type = ui.scroll.message;
         ui.children.slice().forEach(function (child) { if (child !== ui.projects.group && !child.isCamera) ui.remove(child); });
         shining(mark, type);
+        furnish();
         frame();
         ig.Q.on('resize', frame);
         /* igloo's words are drawn before its bloom, as on igloo.inc, so they glow */
@@ -248,12 +284,13 @@ var Ice = (function () {
         board.beforeRenderCbs.push(draw);
         /* a few frames behind the curtain, half-way through each cut and half-way
            into a block, so every shader is compiled before anything is shown */
-        warm = 12;
+        WARM = warm = line.length * 3;
         ig.Q.on('webgl_postrender', function () {
           if (!warm) return;
           if (--warm === 0) {
             cut.uniforms.uDetailProgress.value = 0;
             cut.uniforms.uDetailProgress2.value = 0;
+            room.camera.lerpPosition = lerps[0]; room.camera.lerpTarget = lerps[1]; room.camera.lerpRotation = lerps[2];
             scroll.y = 0;
             Object.keys(glows).forEach(function (k) { glows[k].mesh.visible = false; });
             clearTimeout(patience);
@@ -263,6 +300,35 @@ var Ice = (function () {
         });
         ig.Q.emit('webgl_render_active', true);
       }, function (err) { fail('the scenes did not upload: ' + (err && err.message)); });
+    }
+
+    /* The room, without what belongs to igloo's site: its arrows and links, and
+       the pointer's part in it. Its camera goes straight to its place while
+       the curtain is down; afterwards it moves as igloo's does. */
+    var lerps = [];
+    function furnish() {
+      var particles = room.containerparticles;
+      particles.UI.enable = function () {};
+      particles.UI.disable();
+      /* its light brighter, without igloo's blue */
+      particles.mesh.material.uniforms.uColorLight.value.set('#eceef2');
+      particles.mesh.material.uniforms.uColorDark.value.set('#2c2e34');
+      particles.mesh.material.uniforms.uColorFast.value.set('#ffffff');
+      particles.mesh.computationMaterial.uniforms.tVolume.value = particles.vdbs[0];
+      particles.mesh.computationMaterial.uniforms.uVolumeScale.value = particles.vdbScales[0];
+      /* the room's last pass, its own colour: its blue mostly out, its glare off the words, and
+         the side the words stand on a little in the shade, so white reads on it */
+      var grade = room.___composerPass.material;
+      grade.fragmentShader = grade.fragmentShader.replace('gl_FragColor = vec4(clamp(sceneColor, 0.0, 1.0), 1.0);', [
+        'sceneColor = mix(scene, sceneColor, 0.25);',
+        'sceneColor = mix(vec3(dot(sceneColor, vec3(0.299, 0.587, 0.114))), sceneColor, 0.35);',
+        'sceneColor *= mix(1.0, 0.6, smoothstep(0.38, 0.7, vUv.x));',
+        'gl_FragColor = vec4(clamp(sceneColor, 0.0, 1.0), 1.0);'
+      ].join('\n'));
+      grade.needsUpdate = true;
+      lerps = [room.camera.lerpPosition, room.camera.lerpTarget, room.camera.lerpRotation];
+      room.camera.lerpPosition = room.camera.lerpTarget = room.camera.lerpRotation = 1;
+      room.progress = IN_ROOM;
     }
 
     /* A figure's picture (Groove Dynamics' make-figures.mjs): a column per
@@ -306,11 +372,12 @@ var Ice = (function () {
         .replace('uniform float uRand;', 'uniform float uRand; varying float vAlpha;')
         .replace('gl_FragColor = vec4(uColor, a);', 'gl_FragColor = vec4(uColor, a * vAlpha);');
       (o.glows || []).forEach(function (g) {
+        if (g.points) { glows[g.name] = { mesh: stroke(), g: g, on: false }; return; }
         var text = new Type({ font: 'IBMPlexMono-Medium', text: g.text, width: 40, align: g.align || 'left', lineHeight: 0.8, size: 0.09 }, {
           uniforms: {
             tMap: { value: ig.le.load('../fonts/IBMPlexMono-Medium-datatexture.ktx2', 'data') },
             tBlocks: mark.uniforms.tBlocks,
-            uColor: { value: mark.uniforms.uColor2.value.clone() },
+            uColor: { value: mark.uniforms.uColor2.value.clone().multiplyScalar(g.dim || 1) },
             uColor2: { value: mark.uniforms.uColor2.value.clone() },
             uShow: { value: 1 },
             uRand: { value: Math.random() },
@@ -327,8 +394,50 @@ var Ice = (function () {
         glows[g.name] = { mesh: text, g: g, on: false };
       });
     }
+    /* A line of light: a thin strip through given points on the screen, in
+       igloo's words scene, so igloo's bloom lights it as it lights the words.
+       It draws itself along its length; soft across its width. */
+    function stroke() {
+      var mesh = new ig.Ce(new ig.ot(), new ig.fe({
+        uniforms: { uSoft: { value: 1 } },
+        vertexShader: [
+          'attribute vec2 along;', 'varying vec2 vAlong;',
+          'void main(){vAlong=along;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'
+        ].join('\n'),
+        fragmentShader: [
+          'uniform float uSoft;', 'varying vec2 vAlong;',
+          'void main(){',
+          '  float a=(1.0-smoothstep(0.2,1.0,abs(vAlong.y)))*smoothstep(0.0,0.03,uSoft*1.03-vAlong.x);',
+          '  gl_FragColor=vec4(vec3(1.25),a);',
+          '}'
+        ].join('\n'),
+        depthWrite: false, depthTest: false, transparent: true, side: 2
+      }));
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 1000;
+      mesh.visible = false;
+      ui.add(mesh);
+      return mesh;
+    }
+    function lay(w) {
+      var pts = w.g.points(innerWidth, innerHeight), half = 1.4, length = 0, at = [0], i;
+      for (i = 1; i < pts.length; i++) { length += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); at.push(length); }
+      var pos = [], along = [], index = [];
+      for (i = 1; i < pts.length; i++) {
+        var a = pts[i - 1], b = pts[i], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), nx = -dy / l * half, ny = dx / l * half, v = pos.length / 3;
+        pos.push(a[0] + nx, -(a[1] + ny), 0, a[0] - nx, -(a[1] - ny), 0, b[0] + nx, -(b[1] + ny), 0, b[0] - nx, -(b[1] - ny), 0);
+        along.push(at[i - 1] / length, 1, at[i - 1] / length, -1, at[i] / length, 1, at[i] / length, -1);
+        index.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+      }
+      var geo = w.mesh.geometry;
+      geo.setAttribute('position', new ig.We(new Float32Array(pos), 3));
+      geo.setAttribute('along', new ig.We(new Float32Array(along), 2));
+      geo.setIndex(new ig.We(new Uint16Array(index), 1));
+    }
+
     /* where a shining word stands: by its own edge or middle, in screen pixels, at a height in pixels */
     function place(w) {
+      if (w.g.points) return lay(w);
       var g = w.g, m = w.mesh, W = innerWidth, H = innerHeight;
       var px = g.size(W, H), k = px / 0.09;
       m.scale.set(k, k, 1);
@@ -352,7 +461,7 @@ var Ice = (function () {
           place(w);
           u.uSoft.value = 0;
           w.mesh.visible = true;
-          ig.re.to(u.uSoft, { value: 1, delay: delay || 0, duration: 2.2, ease: 'sine.inOut', overwrite: true });
+          ig.re.to(u.uSoft, { value: 1, delay: delay === undefined ? w.g.after || 0 : delay, duration: w.g.dur || 2.2, ease: 'sine.inOut', overwrite: true });
         } else {
           ig.re.to(u.uSoft, { value: 0, duration: 0.5, ease: 'sine.out', overwrite: true, onComplete: function () { w.mesh.visible = false; } });
         }
@@ -364,7 +473,7 @@ var Ice = (function () {
         u.uShow.value = 0;
         w.mesh.visible = true;
         /* as igloo's mark comes on: half a second of flicker and shifted blocks */
-        ig.re.fromTo(u.uShow, { value: 0 }, { value: 1, delay: delay || 0, duration: 0.5, ease: 'none', overwrite: true });
+        ig.re.fromTo(u.uShow, { value: 0 }, { value: 1, delay: delay === undefined ? w.g.after || 0 : delay, duration: 0.5, ease: 'none', overwrite: true });
       } else {
         ig.re.to(u.uShow, { value: 0, duration: 0.25, ease: 'none', overwrite: true, onComplete: function () { w.mesh.visible = false; } });
       }
@@ -374,12 +483,13 @@ var Ice = (function () {
     function frame() {
       var w = innerWidth, h = innerHeight, shift = SHIFT * clamp01((w / h - 0.9) / 0.5);
       cubes.camera.setViewOffset(w, h, shift * w, 0, w, h);
+      room.camera.setViewOffset(w, h, shift * w, 0, w, h);
       Object.keys(glows).forEach(function (k) { if (glows[k].on) place(glows[k]); });
     }
 
     /* behind the curtain: half-way through each cut, and half-way into a block */
     function warmAt() {
-      var i = Math.min(line.length - 1, Math.floor((12 - warm) / 3));
+      var i = Math.min(line.length - 1, Math.floor((WARM - warm) / 3));
       return line[i].top + line[i].height - 0.5;
     }
 
@@ -397,15 +507,20 @@ var Ice = (function () {
       last = y;
 
       /* the screen is one unit tall: its top edge sits in one place, its bottom edge maybe in the next */
-      var n = round2(y), r = round2(y + 1), held = null, coming = null, into = 0, blocks = false;
+      var n = round2(y), r = round2(y + 1), held = null, coming = null, into = 0, blocks = false, inRoom = false;
       line.forEach(function (s, i) {
         var bottom = s.top + s.height;
         var holdsTop = n >= s.top && n < bottom, holdsBottom = r > s.top && r <= bottom;
         if (s.kind === BLOCKS && (holdsTop || holdsBottom)) { cubes.progress = (y + 1 - s.top) / (s.height + 1); blocks = true; }
+        if (s.kind === ROOM && (holdsTop || holdsBottom)) inRoom = true;
         if (holdsTop) held = i; else if (holdsBottom && coming === null) { coming = i; into = y + 1 - s.top; }
       });
       /* said once a frame: each time the scene comes on, igloo deals its blocks a new turn */
       cubes.isSceneVisible = blocks;
+      room.isSceneVisible = inRoom;
+      room.progress = IN_ROOM;
+      /* the figure turns a little to either side and back, so it never shows its edge */
+      if (inRoom) room.containerparticles.mesh.computationMaterial.uniforms.uRotation.value = Math.PI + Math.sin(now / 1000 * 0.32) * 0.38;
       if (held === null) held = line.length - 1;
 
       var d = u.uDetailProgress.value;
@@ -429,6 +544,7 @@ var Ice = (function () {
       var s = line[i];
       if (s.kind === PAGE) return clear.nothing;
       if (s.kind === BLOCKS) { cubesComposer.render(); return cubesComposer.readBuffer.texture; }
+      if (s.kind === ROOM) { roomComposer.render(); return roomComposer.readBuffer.texture; }
       detailComposer.render();
       return detailComposer.readBuffer.texture;
     }
@@ -504,9 +620,10 @@ var Ice = (function () {
 
     /* the places, in screens from the top: each page, each block, the inside at the end */
     api.places = function () {
-      var p = { pages: [], blocks: [], inside: null };
+      var p = { pages: [], rooms: [], blocks: [], inside: null };
       line.forEach(function (s) {
         if (s.kind === PAGE) p.pages.push(s.top);
+        if (s.kind === ROOM) p.rooms.push(s.top);
         if (s.kind === BLOCKS) cubes.cubes.forEach(function (c, i) { p.blocks.push(s.top + (i + 1) / (s.height + 1) * (s.height + 1) - 1); });
         if (s.kind === INSIDE) p.inside = s.top;
       });
@@ -516,6 +633,18 @@ var Ice = (function () {
       return new Promise(function (done) {
         ig.re.to(scroll, { y: y, duration: dur, ease: 'inOut3', overwrite: true, onComplete: done });
       });
+    };
+
+    /* the particles gather into another shape, as igloo's do when its link changes (its changeLink) */
+    api.form = function (i) {
+      var particles = room.containerparticles, u = particles.mesh.computationMaterial.uniforms;
+      if (particles.currentLink === i) return;
+      particles.currentLink = i;
+      ig.re.fromTo(u.uAdditionalNoise, { value: 1 }, { value: 0, duration: 0.5, ease: 'power2.inOut', overwrite: true });
+      u.tVolume.value = particles.vdbs[i];
+      u.uVolumeScale.value = particles.vdbScales[i];
+      ig.re.to(room.floor, { additionalTime: room.floor.additionalTime + 4, duration: 3, ease: 'power4.out', overwrite: true });
+      particles.soundControl.splatTargetVelocity += 1;
     };
 
     /* into a block, as igloo's controller goes (its navigateToSection) */
@@ -543,5 +672,5 @@ var Ice = (function () {
     return api;
   }
 
-  return { create: create, PAGE: PAGE, BLOCKS: BLOCKS, INSIDE: INSIDE };
+  return { create: create, PAGE: PAGE, ROOM: ROOM, BLOCKS: BLOCKS, INSIDE: INSIDE };
 })();
