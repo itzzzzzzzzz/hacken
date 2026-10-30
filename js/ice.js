@@ -116,11 +116,17 @@ var Ice = (function () {
          touches: there is no mouse in a presentation */
       var quiet = document.createElement('div');
       var dpr = window.devicePixelRatio || 1;
+      /* full quality: as sharp as the screen is (up to twice), and igloo's
+         adaptive resolution, which shrinks the picture on a slow machine, is
+         stopped before it starts (igloo cannot be told false: it would call
+         start on nothing when the render goes active) */
       ig.he.init({
         canvasCnt: box, interactionNode: quiet, shadowMap: true, shadowMapType: 2, relativePath: home,
         fingers: 2, audioContext: false, contextMenu: true,
-        DPR: Math.min(dpr, 1.5), adaptiveDPR: true
+        DPR: Math.min(dpr, 2), adaptiveDPR: true
       }).then(function () {
+        var adaptive = ig.he.adaptiveDPR;
+        if (adaptive) { adaptive.stop(); adaptive.start = function () {}; }
         mendSmoothing();
         ig.he.renderer.webgl.domElement.addEventListener('webglcontextlost', function () { fail('the graphics context was lost'); });
         /* the pointer waits at the foot of the picture, away from the blocks */
