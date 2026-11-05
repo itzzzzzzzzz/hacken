@@ -17,23 +17,23 @@
   var sheets = {
     hacken: {
       form: 0, title: 'Was ist Hacken?',
-      say: 'Ein System dazu bringen, Dinge zu tun,\ndie sein Erfinder nie vorgesehen hat.',
-      points: [['White Hat', 'Mit Erlaubnis. Meldet jede Schwachstelle.'], ['Grey Hat', 'Ohne Auftrag, aber ohne schlechte Absicht.'], ['Black Hat', 'Kriminell. Will Geld, Daten oder Chaos.']]
+      say: 'Schwachstellen in Software, Netzwerken\noder bei Menschen ausnutzen.',
+      points: [['White Hat', 'Pentests im Auftrag, Bug-Bounty-Programme.'], ['Grey Hat', 'Hackt ohne Auftrag, meldet die Schwachstelle.'], ['Black Hat', 'Ransomware, Datendiebstahl, Erpressung.']]
     },
     phish: {
       form: 1, title: 'Phishing',
-      say: 'Eine Nachricht, die echt aussieht. Sie will,\ndass du klickst, bevor du nachdenkst.',
-      points: [['Druck', 'Ihr Konto wird gesperrt. Eile ist der Trick.'], ['Absender', 'Ein vertauschter Buchstabe reicht schon.'], ['Link', 'Erst ansehen, wohin er geht. Dann klicken.']]
+      say: 'Mails, SMS oder Anrufe im Namen echter\nFirmen, um Logins und Codes abzugreifen.',
+      points: [['Spear-Phishing', 'Gezielt auf eine Person, mit echten Details.'], ['Smishing / Vishing', 'Dieselbe Masche per SMS oder per Anruf.'], ['Spoofing', 'Absender und Domain imitieren echte Firmen.'], ['AitM-Phishing', 'Proxy-Seite stiehlt Session-Cookies trotz 2FA.']]
     },
     server: {
       form: 2, title: 'Server',
-      say: 'Auf Servern liegen die Daten von allen. Wer\nhineinkommt, erpresst oder legt alles lahm.',
-      points: [['Ransomware', 'Sperrt alle Dateien und verlangt Geld.'], ['Datenleck', 'Kundendaten landen im Netz.'], ['DDoS', 'Eine Flut von Anfragen legt alles lahm.']]
+      say: 'Angriffe auf Server treffen alle Nutzer\neines Dienstes auf einmal.',
+      points: [['Ransomware', 'Daten kopieren, chiffrieren, dann erpressen.'], ['SQL-Injection', 'Eingaben landen als Befehl in der Datenbank.'], ['Credential Stuffing', 'Geleakte Logins werden automatisch getestet.'], ['DDoS', 'Ein Botnetz flutet den Dienst mit Anfragen.']]
     },
     schutz: {
       form: 3, title: 'Schutz',
-      say: 'Schutz ist kein Produkt,\nsondern eine Gewohnheit.',
-      points: [['Passwort-Manager', 'Jedes Konto bekommt sein eigenes.'], ['Zwei-Faktor', 'Ein zweites Schloss: App oder Hardware-Key.'], ['Updates', 'Machen bekannte Schwachstellen dicht.'], ['Erst denken', 'Dann klicken. Immer.']]
+      say: 'Basisschutz, den jeder\nselbst einrichten kann.',
+      points: [['Passwort-Manager', 'Ein langes, eigenes Passwort pro Konto.'], ['Passkeys / FIDO2', 'Login, den keine Phishing-Seite abgreifen kann.'], ['Updates', 'Automatisch an: Handy, PC und Router.'], ['Backups', '3-2-1: drei Kopien, zwei Medien, eine offline.']]
     }
   };
   var COLUMN = 0.6;
@@ -64,7 +64,7 @@
     words = words.concat(list);
   });
 
-  /* ---- igloo's blocks, in our words (its type has no umlauts: ae, oe, ue, ss) ---- */
+  /* ---- igloo's blocks, in our words (its type has no umlauts: written so they need none) ---- */
   var ice = Ice.create({
     mount: document.body,
     line: [Ice.PAGE, Ice.ROOM, Ice.BLOCKS, Ice.ROOM, Ice.INSIDE],
@@ -74,20 +74,20 @@
       {
         figure: 'mask', label: 'HACKING_01 Social Engineering', date: '30/10/2026',
         title: '////// Social Engineering',
-        text: 'Social Engineering greift nicht den Computer an, sondern den Menschen davor. Angreifer geben sich als Kollegin, Chef oder IT-Support aus, bauen Vertrauen auf und bringen ihr Gegenueber dazu, Passwoerter, Codes oder Zugaenge freiwillig herauszugeben.\n\n' +
-          'Die Masche funktioniert, weil sie menschlich ist: Hilfsbereitschaft, Respekt vor Autoritaet, Zeitdruck und Neugier. Ein Anruf, der dringend klingt, reicht oft schon. Der beste Schutz ist Misstrauen im richtigen Moment: zurueckrufen ueber eine bekannte Nummer, nie ein Passwort am Telefon nennen und lieber einmal zu viel nachfragen.',
-        linkTitle: '/// Taktiken',
-        links: [{ name: 'Vertrauen', link: 'https://www.bsi.bund.de' }, { name: 'Zeitdruck', link: 'https://www.bsi.bund.de' }, { name: 'Neugier', link: 'https://www.bsi.bund.de' }],
+        text: 'Social Engineering greift Menschen an, nicht Systeme. Beim Pretexting erfindet der Angreifer eine Rolle, etwa IT-Support oder Vorgesetzte, und nutzt Details aus LinkedIn oder der Firmenwebsite. Beim Vishing passiert das am Telefon, inzwischen auch mit KI-geklonten Stimmen und Deepfake-Videos.\n\n' +
+          'MFA-Fatigue flutet das Handy mit Push-Anfragen, bis jemand eine davon annimmt. So kam 2022 ein Angreifer bei Uber ins Netz, 2023 reichte ein Anruf beim Helpdesk von MGM Resorts. Schutz: Anfragen auf einem zweiten Kanal verifizieren, Number Matching bei Push-MFA, Helpdesk-Resets nur nach Identifikation.',
+        linkTitle: '/// Methoden',
+        links: [{ name: 'Pretexting', link: 'https://www.bsi.bund.de' }, { name: 'Vishing', link: 'https://www.bsi.bund.de' }, { name: 'MFA-Fatigue', link: 'https://www.bsi.bund.de' }],
         moreTitle: '/// Mehr', more: [{ name: 'BSI', link: 'https://www.bsi.bund.de' }]
       },
       {
         figure: 'flipper', label: 'HACKING_02 Hardware', date: '30/10/2026',
         title: '////// Hardware',
-        text: 'Nicht jeder Angriff kommt uebers Netz. Ein USB-Stick, der auf dem Parkplatz liegt, kann sich als Tastatur ausgeben und in Sekunden Befehle tippen. Ein fremdes Ladekabel kann mehr als laden, und ein kleiner Stecker zwischen Tastatur und Rechner schreibt jede Eingabe mit.\n\n' +
-          'Die Regeln sind einfach: keine fremden USB-Sticks einstecken, nur eigene Kabel und Netzteile benutzen, den Rechner sperren, sobald man aufsteht, und auf Geraete achten, die da nicht hingehoeren. Wer etwas findet, gibt es der IT, statt es selbst auszuprobieren.',
-        linkTitle: '/// Vorsicht',
-        links: [{ name: 'USB-Sticks', link: 'https://www.bsi.bund.de' }, { name: 'Ladekabel', link: 'https://www.bsi.bund.de' }, { name: 'Keylogger', link: 'https://www.bsi.bund.de' }],
-        moreTitle: '/// Regel', more: [{ name: 'Rechner sperren', link: 'https://www.bsi.bund.de' }]
+        text: 'Hardware-Angriffe brauchen physischen Zugriff. Ein BadUSB-Stick meldet sich als Tastatur an und tippt in Sekunden Befehle. Manipulierte Ladekabel enthalten einen Funkchip, Hardware-Keylogger sitzen zwischen Tastatur und PC und speichern jede Eingabe.\n\n' +
+          'Viele Zugangskarten mit 125 kHz lassen sich in Sekunden kopieren, und in fremden WLANs kann ein nachgebauter Hotspot den Verkehr mitlesen. Schutz: USB-Ports per Richtlinie sperren, BitLocker aktivieren, Bildschirm sperren, sobald man aufsteht.',
+        linkTitle: '/// Methoden',
+        links: [{ name: 'BadUSB', link: 'https://www.bsi.bund.de' }, { name: 'Keylogger', link: 'https://www.bsi.bund.de' }, { name: 'RFID-Klonen', link: 'https://www.bsi.bund.de' }],
+        moreTitle: '/// Schutz', more: [{ name: 'USB-Ports sperren', link: 'https://www.bsi.bund.de' }]
       }
     ],
     /* the words that shine as igloo's mark does: beside each block on the
