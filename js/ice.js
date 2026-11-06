@@ -152,6 +152,18 @@ var Ice = (function () {
       }).then(function () {
         var adaptive = ig.he.adaptiveDPR;
         if (adaptive) { adaptive.stop(); adaptive.start = function () {}; }
+        /* a page built small and then shown on a whole screen (PowerPoint's editor, then its show)
+           draws as sharp as the screen it is shown on, up to twice */
+        var sharp = function () {
+          var want = Math.min(window.devicePixelRatio || 1, 2), he = ig.he;
+          if (he.initialDPR && Math.abs(he.currentDPR - want) > 0.01) he.setDPRMultiplier(want / he.initialDPR);
+        };
+        addEventListener('resize', sharp);
+        (function watch() {
+          var q = matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)');
+          var once = function () { if (q.removeEventListener) q.removeEventListener('change', once); else q.removeListener(once); sharp(); watch(); };
+          if (q.addEventListener) q.addEventListener('change', once); else q.addListener(once);
+        })();
         mendSmoothing();
         ig.he.renderer.webgl.domElement.addEventListener('webglcontextlost', function () { fail('the graphics context was lost'); });
         /* the pointer waits at the foot of the picture, away from the blocks */
