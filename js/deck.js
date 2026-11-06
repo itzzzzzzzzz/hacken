@@ -254,7 +254,7 @@
      or PowerPoint went on by itself. In the editor each page simply shows its own step. Until it
      can, the picture of that step stands in, the same picture PowerPoint shows for the slide. */
   function slides(own) {
-    var doc = Office.context.document, me = own + 1, view = '', cur = 0, active = false, asked = 0, quiet = null, ticking = null;
+    var doc = Office.context.document, me = own + 1, view = '', cur = 0, active = false, asked = 0, quiet = null;
     function show(fade) {
       if (pre.style.display === 'none') return;
       if (!fade) { pre.style.display = 'none'; return; }
@@ -290,10 +290,10 @@
       want = own;
       run();
     }
+    /* which slide PowerPoint shows, asked again and again: it answers within a millisecond */
     function look() {
-      if (view !== 'read') return;
       doc.getSelectedDataAsync(Office.CoercionType.SlideRange, function (r) {
-        if (r.status !== 'succeeded' || !r.value || !r.value.slides || !r.value.slides.length) return;
+        if (view !== 'read' || r.status !== 'succeeded' || !r.value || !r.value.slides || !r.value.slides.length) return;
         var now = r.value.slides[0].index;
         if (now === cur) return;
         cur = now;
@@ -308,8 +308,14 @@
       if (v === view) return;
       view = v;
       cur = 0; active = false; asked = 0;
-      clearInterval(ticking);
-      if (view === 'read') { ticking = setInterval(look, 100); look(); } else stand(own);
+      if (view !== 'read') stand(own);
+    }
+    /* and whether it is showing at all: PowerPoint does not always say when its slide show begins */
+    function tick() {
+      doc.getActiveViewAsync(function (r) {
+        if (r.status === 'succeeded') seen(r.value);
+        if (view === 'read') look();
+      });
     }
     slide = {
       ask: function (by) {
@@ -322,8 +328,9 @@
     opening = false;
     first_.classList.add('is-in');
     stand(own);
-    try { doc.addHandlerAsync(Office.EventType.ActiveViewChanged, function (e) { seen(e.activeView); }); } catch (e) {}
-    doc.getActiveViewAsync(function (r) { seen(r.status === 'succeeded' ? r.value : 'edit'); });
+    try { doc.addHandlerAsync(Office.EventType.ActiveViewChanged, function (e) { seen(e.activeView); if (view === 'read') look(); }); } catch (e) {}
+    tick();
+    setInterval(tick, 120);
     window.__deck.slide = function () { return { own: own, view: view, cur: cur, active: active, at: at }; };
   }
 
