@@ -64,8 +64,17 @@
     words = words.concat(list);
   });
 
-  /* ---- igloo's blocks, in our words (its type has no umlauts: written so they need none) ---- */
-  var ice = Ice.create({
+  /* ---- igloo's blocks, in our words (its type has no umlauts: written so they need none) ----
+     Built when the page is to be seen: at once in the browser, in PowerPoint only on the slide in view
+     (on the slides PowerPoint loads ahead the page is the picture of its step and builds nothing) */
+  var ice = null, built = null;
+  function boot() {
+    if (built) return built;
+    ice = make();
+    built = Promise.all([ice.ready, type]);
+    return built;
+  }
+  function make() { return Ice.create({
     mount: document.body,
     line: [Ice.PAGE, Ice.ROOM, Ice.BLOCKS, Ice.ROOM, Ice.INSIDE],
     /* what the room's particles gather into */
@@ -98,7 +107,7 @@
       { name: 'danke', text: '////// Danke', align: 'center', after: 0.15, size: function (W, H) { return H * 0.02; }, soft: true, at: function (W, H) { return [W / 2, H * 0.4]; } },
       { name: 'fragen', text: 'Fragen?', align: 'center', after: 0.5, size: function (W, H) { return H * 0.1; }, soft: true, at: function (W, H) { return [W / 2, H * 0.52]; } }
     ])
-  });
+  }); }
 
   /* ---- the steps ----
      page:   the first slide, on paper
@@ -161,7 +170,7 @@
     if (running) return;
     running = true;
     (function on() {
-      if (at === want) { running = false; if (slide) slide.settled(); return; }
+      if (at === want) { running = false; return; }
       var to = want, from = at;
       settle(from, to).then(function () { at = to; on(); }, function (err) { console.error(err); at = to; on(); });
     })();
@@ -182,11 +191,11 @@
     (s.shine || []).forEach(function (k) { lit[k] = true; ice.shine(k, true, 0, true); });
     at = want = to;
   }
-  /* in PowerPoint with a slide for each step, the next step is the next slide (below) */
+  /* in PowerPoint with a slide for each step, the page on the slide decides whether it takes a step (below) */
   var slide = null;
-  function next() { if (opening) return; if (slide) return slide.ask(1); want = Math.min(steps.length - 1, want + 1); run(); }
-  function prev() { if (opening) return; if (slide) return slide.ask(-1); want = Math.max(0, want - 1); run(); }
-  function first() { if (opening || slide) return; want = 0; run(); }
+  function next() { if (slide) return slide.go(1); if (opening) return; want = Math.min(steps.length - 1, want + 1); run(); }
+  function prev() { if (slide) return slide.go(-1); if (opening) return; want = Math.max(0, want - 1); run(); }
+  function first() { if (slide) return slide.go(0); if (opening) return; want = 0; run(); }
 
   /* ---- the hand: click, space, arrows; no wheel, no scroll, no pointer ---- */
   addEventListener('keydown', function (e) {
@@ -248,13 +257,18 @@
     });
   }
   /* ---- in PowerPoint, a slide for each step ----
-     PowerPoint keeps the slide before the one it shows and loads the one after. The page on each
-     slide waits out of sight where its neighbour stands; when PowerPoint comes to it, it starts from
-     there and makes the move to its own step, whether a click on the page asked PowerPoint to go on
-     or PowerPoint went on by itself. In the editor each page simply shows its own step. Until it
-     can, the picture of that step stands in, the same picture PowerPoint shows for the slide. */
+     The slide list has a slide for each step, and in the editor the page on each slide shows its own step.
+     The show does not go from slide to slide (it is a kiosk show: PowerPoint itself never moves on): the page
+     of the slide the show starts on gives the whole presentation, step after step, as in the browser. Nothing
+     is handed from the page of one slide to the page of the next, because each time PowerPoint comes to a
+     slide it first shows an old picture of it. A page builds igloo's scenes only when its slide is the one
+     in view; until then, and on the slides PowerPoint loads ahead, it is the picture of its step and draws
+     nothing. */
   function slides(own) {
-    var doc = Office.context.document, me = own + 1, view = '', cur = 0, active = false, asked = 0, quiet = null;
+    var doc = Office.context.document, me = own + 1;
+    var view = '', here = false, leading = false, live = false, starting = false;
+    var until = 0, sleeper = null, poll = null, asking = false;
+    /* the picture of the step goes when the scenes stand where it shows them (they look the same) */
     function show(fade) {
       if (pre.style.display === 'none') return;
       if (!fade) { pre.style.display = 'none'; return; }
@@ -262,94 +276,112 @@
       pre.style.opacity = '0';
       wait(0.5).then(function () { pre.style.display = 'none'; });
     }
-    /* out of sight, straight to a place; once the particles have found their shape it stops drawing */
-    function stand(to) {
-      jump(to < 0 || to >= steps.length ? own : to);
+    /* igloo draws while something moves or the page changes size, then holds its picture, unless the page leads */
+    function draw(ms) {
+      if (!live) return;
+      until = Math.max(until, performance.now() + ms);
       ice.awake(true);
-      clearTimeout(quiet);
-      quiet = setTimeout(function hush() {
-        if (running) { quiet = setTimeout(hush, 500); return; }
-        show(false);
-        if (!active) ice.awake(false);
-      }, 3600);
+      clearTimeout(sleeper);
+      sleeper = setTimeout(function nap() {
+        var left = until - performance.now();
+        if (left > 0 || running) { sleeper = setTimeout(nap, Math.max(150, left)); return; }
+        if (!leading) ice.awake(false);
+      }, ms);
     }
-    function where() {
-      if (view !== 'read') return own;
-      return cur === me - 1 ? own - 1 : cur === me + 1 ? own + 1 : own;
+    /* back to its own step at once; its particles take a moment to gather into their shape */
+    function home() {
+      if (!live) return;
+      jump(own);
+      draw(3600);
     }
-    function come() {
-      active = true;
-      ice.awake(true);
-      if (pre.style.display !== 'none') {
-        /* shown before it was ready: it is its own step at once, under its picture, and comes out of it */
-        clearTimeout(quiet);
+    function build() {
+      if (live || starting) return;
+      starting = true;
+      boot().then(function () {
+        live = true;
+        window.__deck.ice = ice;
+        window.__deck.ready = true;
         jump(own);
-        quiet = setTimeout(function () { show(true); }, 3200);
-        return;
-      }
-      want = own;
-      run();
+        draw(3600);
+        setTimeout(function () { show(true); }, 3200);
+      }, function (err) { console.error('[DECK] ' + err.message); });
     }
-    /* which slide PowerPoint shows, asked again and again: it answers within a millisecond */
-    function look() {
-      doc.getSelectedDataAsync(Office.CoercionType.SlideRange, function (r) {
-        if (view !== 'read' || r.status !== 'succeeded' || !r.value || !r.value.slides || !r.value.slides.length) return;
-        var now = r.value.slides[0].index;
-        if (now === cur) return;
-        cur = now;
-        if (cur === me) { come(); return; }
-        active = false;
-        asked = 0;
-        var to = where();
-        if (to !== at || running) stand(to);
-      });
+    function lead(on) {
+      if (leading === on) return;
+      leading = on;
+      if (on) draw(1000);
+      else home();
     }
-    function seen(v) {
-      if (v === view) return;
+    /* what PowerPoint shows: the editor or the show, and which slide in it */
+    function seen(v, slidesInView) {
+      var was = view, h = here;
       view = v;
-      cur = 0; active = false; asked = 0;
-      if (view !== 'read') stand(own);
+      /* (when PowerPoint cannot say, as while one writes in the notes, nothing changes) */
+      if (view === 'read') { if (slidesInView) h = slidesInView[0] === me; }
+      else if (view === 'edit') { if (slidesInView) h = slidesInView.indexOf(me) >= 0; }
+      else h = false;
+      /* the show begins or ends: a page that gave it goes back to its own step */
+      if (was !== view && leading) lead(false);
+      if (h === here && was === view) return;
+      here = h;
+      if (!here) { lead(false); return; }
+      build();
+      if (view === 'read') lead(true);
+      else draw(1500);
     }
-    /* and whether it is showing at all: PowerPoint does not always say when its slide show begins */
     function tick() {
+      if (asking) return;
+      asking = true;
       doc.getActiveViewAsync(function (r) {
-        if (r.status === 'succeeded') seen(r.value);
-        if (view === 'read') look();
+        var v = r.status === 'succeeded' ? r.value : view;
+        doc.getSelectedDataAsync(Office.CoercionType.SlideRange, function (s) {
+          asking = false;
+          var ok = s.status === 'succeeded' && s.value && s.value.slides && s.value.slides.length;
+          seen(v, ok ? s.value.slides.map(function (x) { return x.index; }) : null);
+          clearTimeout(poll);
+          poll = setTimeout(tick, leading ? 400 : live ? 700 : 1000);
+        });
       });
     }
+    function soon() { clearTimeout(poll); poll = setTimeout(tick, 30); }
     slide = {
-      ask: function (by) {
-        if (view !== 'read' || !active) return;
-        if (running) { asked = by; return; }
-        doc.goToByIdAsync(by > 0 ? Office.Index.Next : Office.Index.Previous, Office.GoToType.Index, function () {});
-      },
-      settled: function () { if (asked) { var by = asked; asked = 0; slide.ask(by); } }
+      go: function (by) {
+        /* only the slide in view hears a click or a key: in the show, that page gives the presentation */
+        if (view === 'read' && !leading) { here = true; build(); lead(true); }
+        if (!leading || !live) return;
+        if (pre.style.display !== 'none') show(true);
+        want = by === 0 ? 0 : Math.max(0, Math.min(steps.length - 1, want + by));
+        run();
+      }
     };
     opening = false;
     first_.classList.add('is-in');
-    stand(own);
-    try { doc.addHandlerAsync(Office.EventType.ActiveViewChanged, function (e) { seen(e.activeView); if (view === 'read') look(); }); } catch (e) {}
+    window.__deck = { next: next, prev: prev, at: function () { return at; }, steps: steps, jump: jump, ready: false,
+      slide: function () { return { own: own, view: view, here: here, leading: leading, live: live, at: at }; } };
+    /* the show begins or ends, the editor is zoomed: the page changes size, and PowerPoint is asked again at once */
+    addEventListener('resize', function () { draw(1200); soon(); });
+    try { doc.addHandlerAsync(Office.EventType.ActiveViewChanged, soon); } catch (e) {}
     tick();
-    setInterval(tick, 120);
-    window.__deck.slide = function () { return { own: own, view: view, cur: cur, active: active, at: at }; };
   }
 
+  function whole() {
+    boot().then(function () {
+      window.__deck = { next: next, prev: prev, at: function () { return at; }, steps: steps, ice: ice, jump: jump, ready: true };
+      setTimeout(lift, Math.max(0, 1100 - (performance.now() - t0)));
+    }, function (err) {
+      console.error('[DECK] ' + err.message);
+      window.__deck = { failed: true, next: next, prev: prev };
+      type.then(lift);
+    });
+  }
   var type = (document.fonts ? document.fonts.load('600 64px "Inter Tight"', 'Hacken').catch(function () {}) : Promise.resolve()).then(shift);
-  /* a slide's own step is known before the curtain goes: its picture takes the mark's place */
+  /* in PowerPoint, a slide's own step is known before anything else: its picture takes the mark's place */
   if (inOffice) told.then(function (step) {
-    if (step === null) return;
+    if (step === null) { whole(); return; }
     pre.classList.add('is-slide');
     pre.style.backgroundImage = 'url(assets/steps/' + step + '.jpg)';
     $('.pages').classList.add('still');
+    slides(step);
   });
-  Promise.all([ice.ready, type, inOffice ? told : null]).then(function (r) {
-    window.__deck = { next: next, prev: prev, at: function () { return at; }, steps: steps, ice: ice, jump: jump, ready: true };
-    if (typeof r[2] === 'number') { slides(r[2]); return; }
-    setTimeout(lift, Math.max(0, 1100 - (performance.now() - t0)));
-  }, function (err) {
-    console.error('[DECK] ' + err.message);
-    window.__deck = { failed: true, next: next, prev: prev };
-    /* without the scenes a slide keeps its picture */
-    (inOffice ? told : Promise.resolve(null)).then(function (step) { if (step === null) type.then(lift); });
-  });
+  else whole();
 })();
