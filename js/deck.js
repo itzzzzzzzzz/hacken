@@ -189,15 +189,17 @@
     })();
   }
   /* a step's place at once, without its move: for a slide that waits out of sight (below) */
-  function jump(to) {
+  function jump(to, home) {
     var s = steps[to];
     Object.keys(lit).forEach(function (k) { if (lit[k]) { ice.shine(k, false, 0, true); lit[k] = false; } });
     /* past the page the room has been come into; on the page, only if its way in has been played */
     fallen = to > 0 || played;
     ice.rest();
     if (opened !== null && s.open !== opened) { ice.close(true); opened = null; }
-    /* the particles gather as they do when their shape changes; out of sight there is time for it */
-    if (s.form !== undefined) ice.form(s.form, false, true);
+    /* the particles gather as they do when their shape changes; out of sight there is time for it.
+       (A page going back to its own step leaves them alone if they already have its shape: a gathering
+       they do not need would still be settling when the page is seen again) */
+    if (s.form !== undefined) { if (home) ice.form(s.form); else ice.form(s.form, false, true); }
     if (s.inside) ice.empty(true); else ice.full();
     ice.at(place(s));
     if (s.open !== undefined && opened !== s.open) { opened = s.open; ice.open(s.open, true); }
@@ -309,8 +311,8 @@
     /* back to its own step at once; its particles take a moment to gather into their shape */
     function home() {
       if (!live) return;
-      if (at !== own || want !== own || running) jump(own);
-      draw(3600);
+      if (at !== own || want !== own || running) { jump(own, true); draw(6000); }
+      else draw(1500);
     }
     function build() {
       if (live || starting) return;
