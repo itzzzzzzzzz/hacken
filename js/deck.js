@@ -76,6 +76,8 @@
   }
   function make() { return Ice.create({
     mount: document.body,
+    /* on a slide in PowerPoint the picture of the step stands in: it waits however long a slow line takes */
+    patience: slide ? 0 : undefined,
     line: [Ice.PAGE, Ice.ROOM, Ice.BLOCKS, Ice.ROOM, Ice.INSIDE],
     /* what the room's particles gather into */
     shapes: [{ name: 'hat', scale: 1.28 }, { name: 'hook', scale: 1.28 }, { name: 'server', scale: 1.28 }, { name: 'lock', scale: 1.28 }],

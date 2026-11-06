@@ -91,11 +91,12 @@ var Ice = (function () {
       if (box) box.style.display = 'none';
       rejectReady(new Error(why));
     }
-    var patience = setTimeout(function wait() {
+    /* (a page that has a picture standing in for it, a slide in PowerPoint, waits as long as its files take: o.patience 0) */
+    if (o.patience !== 0) var patience = setTimeout(function wait() {
       if (ready) return;
       if (document.hidden) { patience = setTimeout(wait, 2000); return; }
       fail('the scenes took too long');
-    }, PATIENCE * 1000);
+    }, (o.patience || PATIENCE) * 1000);
 
     var supported = (function () {
       try { return !!(window.WebGL2RenderingContext && document.createElement('canvas').getContext('webgl2')); } catch (e) { return false; }
