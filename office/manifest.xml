@@ -25,6 +25,6 @@
     <RequestedWidth>960</RequestedWidth>
     <RequestedHeight>540</RequestedHeight>
   </DefaultSettings>
-  <Permissions>Restricted</Permissions>
+  <Permissions>ReadDocument</Permissions>
   <AllowSnapshot>true</AllowSnapshot>
 </OfficeApp>

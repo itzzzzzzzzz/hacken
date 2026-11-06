@@ -133,7 +133,7 @@
 
   /* ---- one step to another ----
      The first time in the room, igloo's way into it: where in its timeline it starts, and for how long */
-  var FALL_FROM = 0, FALL_TIME = 8, fallen = false;
+  var FALL_FROM = 0, FALL_TIME = 8, fallen = false, played = false;
   var at = 0, want = 0, running = false, opened = null, opening = true, lit = {};
   function settle(from, to) {
     var s = steps[to], y = place(s), moving = Math.abs(ice.scroll.y - y) > 0.001;
@@ -143,7 +143,7 @@
     var chain = Promise.resolve();
     if (opened !== null && s.open !== opened) chain = chain.then(function () { return ice.close(); }).then(function () { opened = null; });
     chain = chain.then(function () {
-      if (falls) fallen = true;
+      if (falls) fallen = played = true;
       else if (s.form !== undefined) ice.form(s.form);
       if (s.inside) ice.empty();
       if (!moving) return wait(0.35);
@@ -161,14 +161,32 @@
     if (running) return;
     running = true;
     (function on() {
-      if (at === want) { running = false; return; }
+      if (at === want) { running = false; if (slide) slide.settled(); return; }
       var to = want, from = at;
       settle(from, to).then(function () { at = to; on(); }, function (err) { console.error(err); at = to; on(); });
     })();
   }
-  function next() { if (opening) return; want = Math.min(steps.length - 1, want + 1); run(); }
-  function prev() { if (opening) return; want = Math.max(0, want - 1); run(); }
-  function first() { if (opening) return; want = 0; run(); }
+  /* a step's place at once, without its move: for a slide that waits out of sight (below) */
+  function jump(to) {
+    var s = steps[to];
+    Object.keys(lit).forEach(function (k) { if (lit[k]) { ice.shine(k, false, 0, true); lit[k] = false; } });
+    /* past the page the room has been come into; on the page, only if its way in has been played */
+    fallen = to > 0 || played;
+    ice.rest();
+    if (opened !== null && s.open !== opened) { ice.close(true); opened = null; }
+    /* the particles gather as they do when their shape changes; out of sight there is time for it */
+    if (s.form !== undefined) ice.form(s.form, false, true);
+    if (s.inside) ice.empty(true); else ice.full();
+    ice.at(place(s));
+    if (s.open !== undefined && opened !== s.open) { opened = s.open; ice.open(s.open, true); }
+    (s.shine || []).forEach(function (k) { lit[k] = true; ice.shine(k, true, 0, true); });
+    at = want = to;
+  }
+  /* in PowerPoint with a slide for each step, the next step is the next slide (below) */
+  var slide = null;
+  function next() { if (opening) return; if (slide) return slide.ask(1); want = Math.min(steps.length - 1, want + 1); run(); }
+  function prev() { if (opening) return; if (slide) return slide.ask(-1); want = Math.max(0, want - 1); run(); }
+  function first() { if (opening || slide) return; want = 0; run(); }
 
   /* ---- the hand: click, space, arrows; no wheel, no scroll, no pointer ---- */
   addEventListener('keydown', function (e) {
@@ -191,11 +209,25 @@
   addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
   addEventListener('dragstart', function (e) { e.preventDefault(); });
 
-  /* inside PowerPoint the page runs as an Office add-in: it tells Office it is there */
-  (function office(tries) {
-    if (window.Office && Office.onReady) { try { Office.onReady(function () {}); } catch (e) {} return; }
-    if (tries < 100) setTimeout(function () { office(tries + 1); }, 100);
-  })(0);
+  /* Inside PowerPoint the page runs as an Office add-in (its address says so) and tells Office it is
+     there. On a deck with a slide for each step, the add-in on each slide is told its step: its own
+     setting "step". Without one (the deck of one slide) the page runs all the steps itself. */
+  var inOffice = /[?&]_host_Info=/i.test(location.search);
+  var told = new Promise(function (done) {
+    (function office(tries) {
+      if (window.Office && Office.onReady) {
+        try {
+          Office.onReady(function (info) {
+            var step = null;
+            try { if (info && info.host) step = Office.context.document.settings.get('step'); } catch (e) {}
+            done(typeof step === 'number' && steps[step] ? step : null);
+          });
+        } catch (e) { done(null); }
+        return;
+      }
+      if (tries < 300) setTimeout(function () { office(tries + 1); }, 100); else done(null);
+    })(0);
+  });
 
   /* ---- the curtain: the mark, breathing, until the scenes are warm. Then the
      mark takes a last full breath and stops, the curtain is gone without
@@ -215,13 +247,102 @@
       opening = false;
     });
   }
+  /* ---- in PowerPoint, a slide for each step ----
+     PowerPoint keeps the slide before the one it shows and loads the one after. The page on each
+     slide waits out of sight where its neighbour stands; when PowerPoint comes to it, it starts from
+     there and makes the move to its own step, whether a click on the page asked PowerPoint to go on
+     or PowerPoint went on by itself. In the editor each page simply shows its own step. Until it
+     can, the picture of that step stands in, the same picture PowerPoint shows for the slide. */
+  function slides(own) {
+    var doc = Office.context.document, me = own + 1, view = '', cur = 0, active = false, asked = 0, quiet = null, ticking = null;
+    function show(fade) {
+      if (pre.style.display === 'none') return;
+      if (!fade) { pre.style.display = 'none'; return; }
+      pre.style.transition = 'opacity .45s var(--e-soft)';
+      pre.style.opacity = '0';
+      wait(0.5).then(function () { pre.style.display = 'none'; });
+    }
+    /* out of sight, straight to a place; once the particles have found their shape it stops drawing */
+    function stand(to) {
+      jump(to < 0 || to >= steps.length ? own : to);
+      ice.awake(true);
+      clearTimeout(quiet);
+      quiet = setTimeout(function hush() {
+        if (running) { quiet = setTimeout(hush, 500); return; }
+        show(false);
+        if (!active) ice.awake(false);
+      }, 3600);
+    }
+    function where() {
+      if (view !== 'read') return own;
+      return cur === me - 1 ? own - 1 : cur === me + 1 ? own + 1 : own;
+    }
+    function come() {
+      active = true;
+      ice.awake(true);
+      if (pre.style.display !== 'none') {
+        /* shown before it was ready: it is its own step at once, under its picture, and comes out of it */
+        clearTimeout(quiet);
+        jump(own);
+        quiet = setTimeout(function () { show(true); }, 3200);
+        return;
+      }
+      want = own;
+      run();
+    }
+    function look() {
+      if (view !== 'read') return;
+      doc.getSelectedDataAsync(Office.CoercionType.SlideRange, function (r) {
+        if (r.status !== 'succeeded' || !r.value || !r.value.slides || !r.value.slides.length) return;
+        var now = r.value.slides[0].index;
+        if (now === cur) return;
+        cur = now;
+        if (cur === me) { come(); return; }
+        active = false;
+        asked = 0;
+        var to = where();
+        if (to !== at || running) stand(to);
+      });
+    }
+    function seen(v) {
+      if (v === view) return;
+      view = v;
+      cur = 0; active = false; asked = 0;
+      clearInterval(ticking);
+      if (view === 'read') { ticking = setInterval(look, 100); look(); } else stand(own);
+    }
+    slide = {
+      ask: function (by) {
+        if (view !== 'read' || !active) return;
+        if (running) { asked = by; return; }
+        doc.goToByIdAsync(by > 0 ? Office.Index.Next : Office.Index.Previous, Office.GoToType.Index, function () {});
+      },
+      settled: function () { if (asked) { var by = asked; asked = 0; slide.ask(by); } }
+    };
+    opening = false;
+    first_.classList.add('is-in');
+    stand(own);
+    try { doc.addHandlerAsync(Office.EventType.ActiveViewChanged, function (e) { seen(e.activeView); }); } catch (e) {}
+    doc.getActiveViewAsync(function (r) { seen(r.status === 'succeeded' ? r.value : 'edit'); });
+    window.__deck.slide = function () { return { own: own, view: view, cur: cur, active: active, at: at }; };
+  }
+
   var type = (document.fonts ? document.fonts.load('600 64px "Inter Tight"', 'Hacken').catch(function () {}) : Promise.resolve()).then(shift);
-  Promise.all([ice.ready, type]).then(function () {
-    window.__deck = { next: next, prev: prev, at: function () { return at; }, steps: steps, ice: ice, ready: true };
+  /* a slide's own step is known before the curtain goes: its picture takes the mark's place */
+  if (inOffice) told.then(function (step) {
+    if (step === null) return;
+    pre.classList.add('is-slide');
+    pre.style.backgroundImage = 'url(assets/steps/' + step + '.jpg)';
+    $('.pages').classList.add('still');
+  });
+  Promise.all([ice.ready, type, inOffice ? told : null]).then(function (r) {
+    window.__deck = { next: next, prev: prev, at: function () { return at; }, steps: steps, ice: ice, jump: jump, ready: true };
+    if (typeof r[2] === 'number') { slides(r[2]); return; }
     setTimeout(lift, Math.max(0, 1100 - (performance.now() - t0)));
   }, function (err) {
     console.error('[DECK] ' + err.message);
     window.__deck = { failed: true, next: next, prev: prev };
-    type.then(lift);
+    /* without the scenes a slide keeps its picture */
+    (inOffice ? told : Promise.resolve(null)).then(function (step) { if (step === null) type.then(lift); });
   });
 })();

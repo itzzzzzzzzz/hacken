@@ -455,12 +455,19 @@ var Ice = (function () {
         m.position.set(x, -y - (bb.min.y + bb.max.y) / 2 * k, 0);
       } else m.position.set(x, -y, 0);
     }
-    api.shine = function (name, on, delay) {
+    api.shine = function (name, on, delay, now) {
       var w = glows[name];
       if (!w || w.on === on) return;
       w.on = on;
       var u = w.mesh.material.uniforms;
       ig.re.killTweensOf(u.uShow);
+      /* at once: there or not, without coming or going */
+      if (now) {
+        if (w.g.soft) { ig.re.killTweensOf(u.uSoft); u.uSoft.value = on ? 1 : 0; } else u.uShow.value = on ? 1 : 0;
+        if (on) place(w);
+        w.mesh.visible = on;
+        return;
+      }
       if (w.g.soft) {
         ig.re.killTweensOf(u.uSoft);
         if (on) {
@@ -671,39 +678,75 @@ var Ice = (function () {
       });
     };
     /* the particles gather into another shape, as igloo's do when its link changes (its changeLink) */
-    api.form = function (i) {
+    /* (again: the same shape once more, so particles that never went through the fall settle into it) */
+    api.form = function (i, now, again) {
       var particles = room.containerparticles, u = particles.mesh.computationMaterial.uniforms;
-      if (particles.currentLink === i) return;
+      if (particles.currentLink === i && !again) return;
       particles.currentLink = i;
-      ig.re.fromTo(u.uAdditionalNoise, { value: 1 }, { value: 0, duration: 0.5, ease: 'power2.inOut', overwrite: true });
       u.tVolume.value = particles.vdbs[i];
       u.uVolumeScale.value = particles.vdbScales[i];
+      if (now) return;
+      ig.re.fromTo(u.uAdditionalNoise, { value: 1 }, { value: 0, duration: 0.5, ease: 'power2.inOut', overwrite: true });
       ig.re.to(room.floor, { additionalTime: room.floor.additionalTime + 4, duration: 3, ease: 'power4.out', overwrite: true });
       particles.soundControl.splatTargetVelocity += 1;
     };
 
-    /* into a block, as igloo's controller goes (its navigateToSection) */
-    api.open = function (i) {
+    /* into a block, as igloo's controller goes (its navigateToSection); at once, the cut is open at once */
+    api.open = function (i, now) {
       var u = cut.uniforms;
-      ig.re.to(u.uDetailProgress, { overwrite: true, value: 1, ease: 'power3.in', duration: 1.25 });
-      ig.re.to(u.uDetailProgress2, { overwrite: true, value: 1, ease: 'sine.out', delay: 0.75, duration: 1.25 });
+      if (now) {
+        ig.re.killTweensOf(u.uDetailProgress); ig.re.killTweensOf(u.uDetailProgress2);
+        u.uDetailProgress.value = u.uDetailProgress2.value = 1;
+      } else {
+        ig.re.to(u.uDetailProgress, { overwrite: true, value: 1, ease: 'power3.in', duration: 1.25 });
+        ig.re.to(u.uDetailProgress2, { overwrite: true, value: 1, ease: 'sine.out', delay: 0.75, duration: 1.25 });
+      }
       cubes.detailAnimationIn(0);
       detail.playInAnimation(i, 0);
-      return new Promise(function (done) { ig.re.delayedCall(2, done); });
+      return new Promise(function (done) { ig.re.delayedCall(now ? 0 : 2, done); });
     };
-    api.close = function () {
+    api.close = function (now) {
       var u = cut.uniforms;
-      ig.re.to(u.uDetailProgress, { overwrite: true, value: 0, ease: 'power2.out', duration: 1.25 });
-      ig.re.to(u.uDetailProgress2, { overwrite: true, value: 0, ease: 'power2.out', duration: 0.6 });
+      if (now) {
+        ig.re.killTweensOf(u.uDetailProgress); ig.re.killTweensOf(u.uDetailProgress2);
+        u.uDetailProgress.value = u.uDetailProgress2.value = 0;
+      } else {
+        ig.re.to(u.uDetailProgress, { overwrite: true, value: 0, ease: 'power2.out', duration: 1.25 });
+        ig.re.to(u.uDetailProgress2, { overwrite: true, value: 0, ease: 'power2.out', duration: 0.6 });
+      }
       cubes.detailAnimationOut();
       detail.playOutAnimation();
-      return new Promise(function (done) { ig.re.delayedCall(1, done); });
+      return new Promise(function (done) { ig.re.delayedCall(now ? 0 : 1, done); });
     };
     /* the inside of a block with nothing in it: its light, its haze, its dust, and the camera going in */
-    api.empty = function () {
+    var detailZ = null;
+    api.empty = function (now) {
+      if (detailZ === null) detailZ = detail.camera.basePosition.z;
       detail.objects.forEach(function (ob) { ob.mesh.visible = false; });
+      if (now) { ig.re.killTweensOf(detail.camera.basePosition); detail.camera.basePosition.z = 2.5; return; }
       ig.re.fromTo(detail.camera.basePosition, { z: 4 }, { overwrite: true, z: 2.5, duration: 2.4, ease: 'inOut1' });
     };
+    /* and its figures back, for a block that is opened again */
+    api.full = function () {
+      if (detailZ === null) return;
+      detail.objects.forEach(function (ob) { ob.mesh.visible = true; });
+      ig.re.killTweensOf(detail.camera.basePosition);
+      detail.camera.basePosition.z = detailZ;
+    };
+
+    /* For a page that waits out of sight (in PowerPoint, a slide for each step): a place reached at
+       once instead of by a glide, the room at rest instead of in its fall, and the picture held
+       still while no one sees it */
+    api.at = function (y) { ig.re.killTweensOf(scroll); scroll.y = y; };
+    api.rest = function () {
+      ig.re.killTweensOf(roomAt);
+      roomAt.value = IN_ROOM;
+      falling = false;
+      snap = 0;
+      room.___composerPass.material.uniforms.uGrade.value = 1;
+      frame();
+    };
+    api.awake = function (on) { ig.Q.emit('webgl_render_active', !!on); };
     return api;
   }
 

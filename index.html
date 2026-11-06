@@ -73,6 +73,10 @@ html,body,*{cursor:none!important}
 #pre svg{position:absolute;left:50%;top:50%;width:var(--m);height:var(--m-h);
   margin:calc(var(--m-h) * -.5) 0 0 calc(var(--m) * -.5);color:var(--ink);animation:pre-pulse 1.6s var(--e-io) infinite}
 @keyframes pre-pulse{0%,100%{opacity:.35}50%{opacity:1}}
+/* in PowerPoint, a slide for each step: until the page shows its step, the picture of it stands in */
+#pre.is-slide{background:#fff center/cover no-repeat}
+#pre.is-slide svg{display:none}
+.still .lockup,.still .lockup-word span{transition:none!important}
 
 /* ============================================================
    the slide on paper: the first, the size of the screen
