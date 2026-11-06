@@ -284,7 +284,11 @@
      and on the slides PowerPoint loads ahead, it is the picture of its step and draws nothing. */
   function slides(own) {
     var doc = Office.context.document, me = own + 1;
-    var view = '', here = false, leading = false, live = false, starting = false, stepping = null;
+    var view = '', here = false, leading = false, live = false, starting = false, stepping = null, woken = 0, warmed = false;
+    /* the pages of all the slides hear each other (they come from the same place): the page that goes on
+       wakes the page of the next slide first, so that one is already moving when PowerPoint shows it */
+    var near = null;
+    try { near = new BroadcastChannel('hacken-slides'); } catch (e) {}
     var until = 0, sleeper = null, poll = null, asking = false;
     /* the picture of the step goes when the scenes stand where it shows them (they look the same) */
     function show(fade) {
@@ -295,7 +299,7 @@
       wait(0.5).then(function () { pre.style.display = 'none'; });
     }
     /* the page in view draws all the time: in the editor, or giving the show */
-    function seenLive() { return leading || (view === 'edit' && here); }
+    function seenLive() { return leading || (view === 'edit' && here) || performance.now() - woken < 2500; }
     /* the others draw while something moves or the page changes size, then hold their picture */
     function draw(ms) {
       if (!live) return;
@@ -324,7 +328,31 @@
         jump(own);
         draw(3600);
         setTimeout(function () { show(true); }, 3200);
+        if (view === 'edit' && here) setTimeout(warm, 1500);
       }, function (err) { console.error('[DECK] ' + err.message); });
+    }
+    /* PowerPoint makes the page of a slide only when it shows that slide. Once, when the deck is opened in
+       the editor, the first page in view shows each slide whose page is not there yet for a moment and comes
+       back: from then on every page builds in the background and is ready before anyone clicks to it */
+    function warm() {
+      if (warmed || !near || view !== 'edit' || !here || stepping !== null) return;
+      warmed = true;
+      var there = {};
+      there[own] = true;
+      var heard = function (e) { if (e.data && typeof e.data.alive === 'number') there[e.data.alive] = true; };
+      near.addEventListener('message', heard);
+      near.postMessage({ who: true });
+      setTimeout(function () {
+        near.removeEventListener('message', heard);
+        var missing = steps.map(function (x, i) { return i; }).filter(function (i) { return !there[i]; });
+        if (!missing.length || view !== 'edit' || stepping !== null) return;
+        near.postMessage({ warming: true });
+        var i = 0;
+        (function one() {
+          if (i < missing.length) { toSlide(missing[i++]); setTimeout(one, 500); }
+          else toSlide(own);
+        })();
+      }, 400);
     }
     function lead(on) {
       if (leading === on) return;
@@ -352,6 +380,8 @@
       if (was !== view && leading) lead(false);
       if (h === here && was === view) return;
       here = h;
+      /* in the editor every page PowerPoint has made builds, in view or not (in the show only the page in view) */
+      if (view === 'edit') build();
       if (!here) { stepping = null; lead(false); home(); return; }
       build();
       if (view === 'read') lead(true);
@@ -372,6 +402,17 @@
       });
     }
     function soon() { clearTimeout(poll); poll = setTimeout(tick, 30); }
+    if (near) near.onmessage = function (e) {
+      var m = e.data || {};
+      if (m.who) near.postMessage({ alive: own });
+      if (m.warming) warmed = true;
+      if (m.wake === own) { woken = performance.now(); draw(2500); soon(); }
+    };
+    /* the page that goes on: the next one is woken, then PowerPoint goes there */
+    function handOver(to) {
+      if (near) near.postMessage({ wake: to });
+      setTimeout(function () { if (stepping === to) toSlide(to); }, near ? 90 : 0);
+    }
     slide = {
       go: function (by) {
         /* only the slide in view hears a click or a key */
@@ -391,7 +432,7 @@
         if (to < 0 || to >= steps.length || to === at) return;
         here = true;
         stepping = to;
-        if (!live || by === 0) { toSlide(to); return; }
+        if (!live || by === 0) { handOver(to); return; }
         if (pre.style.display !== 'none') show(true);
         want = to;
         run();
@@ -400,7 +441,7 @@
         if (stepping === null || at !== stepping) return;
         var to = stepping, s = steps[to];
         /* PowerPoint goes there once the step stands still: its words lit, its particles in their shape, a block open */
-        setTimeout(function () { if (stepping === to && at === to) toSlide(to); }, Math.max(litAfter(s), s.form !== undefined ? 3.2 : 0, s.open !== undefined ? 3.4 : 0, 0.6) * 1000);
+        setTimeout(function () { if (stepping === to && at === to) handOver(to); }, Math.max(litAfter(s), s.form !== undefined ? 3.2 : 0, s.open !== undefined ? 3.4 : 0, 0.6) * 1000);
       }
     };
     opening = false;
