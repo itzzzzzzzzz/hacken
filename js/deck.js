@@ -290,6 +290,9 @@
     var near = null;
     try { near = new BroadcastChannel('hacken-slides'); } catch (e) {}
     var until = 0, sleeper = null, poll = null, asking = false;
+    /* how long a page that is not in view draws after its particles have been sent into a shape: they only
+       move while drawn, so it draws until they rest there (else they would still be settling when it is seen) */
+    var SETTLE = 9000;
     /* the picture of the step goes when the scenes stand where it shows them (they look the same) */
     function show(fade) {
       if (pre.style.display === 'none') return;
@@ -315,7 +318,7 @@
     /* back to its own step at once; its particles take a moment to gather into their shape */
     function home() {
       if (!live) return;
-      if (at !== own || want !== own || running) { jump(own, true); draw(6000); }
+      if (at !== own || want !== own || running) { jump(own, true); draw(SETTLE); }
       else draw(1500);
     }
     function build() {
@@ -326,7 +329,7 @@
         window.__deck.ice = ice;
         window.__deck.ready = true;
         jump(own);
-        draw(3600);
+        draw(SETTLE);
         setTimeout(function () { show(true); }, 3200);
         if (view === 'edit' && here) setTimeout(warm, 1500);
       }, function (err) { console.error('[DECK] ' + err.message); });
@@ -349,7 +352,7 @@
         near.postMessage({ warming: true });
         var i = 0;
         (function one() {
-          if (i < missing.length) { toSlide(missing[i++]); setTimeout(one, 500); }
+          if (i < missing.length) { announce(missing[i]); toSlide(missing[i++]); setTimeout(one, 500); }
           else toSlide(own);
         })();
       }, 400);
@@ -408,8 +411,11 @@
       if (m.warming) warmed = true;
       if (m.wake === own) { woken = performance.now(); draw(2500); soon(); }
     };
+    /* which step PowerPoint is sent to next: a page made for it reads this before its first frame (index.html) */
+    function announce(step) { try { localStorage.setItem('hacken-coming', JSON.stringify({ step: step, t: Date.now() })); } catch (e) {} }
     /* the page that goes on: the next one is woken, then PowerPoint goes there */
     function handOver(to) {
+      announce(to);
       if (near) near.postMessage({ wake: to });
       setTimeout(function () { if (stepping === to) toSlide(to); }, near ? 90 : 0);
     }
@@ -469,7 +475,7 @@
   if (inOffice) told.then(function (step) {
     if (step === null) { whole(); return; }
     pre.classList.add('is-slide');
-    pre.style.backgroundImage = 'url(assets/steps/' + step + '.jpg)';
+    pre.style.backgroundImage = 'url(assets/steps/' + step + '.jpg)' + (window.__tiny && window.__tiny[step] ? ', url(' + window.__tiny[step] + ')' : '');
     $('.pages').classList.add('still');
     slides(step);
   });
