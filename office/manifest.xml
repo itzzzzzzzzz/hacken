@@ -26,5 +26,5 @@
     <RequestedHeight>540</RequestedHeight>
   </DefaultSettings>
   <Permissions>ReadDocument</Permissions>
-  <AllowSnapshot>true</AllowSnapshot>
+  <AllowSnapshot>false</AllowSnapshot>
 </OfficeApp>
