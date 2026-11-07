@@ -62,6 +62,14 @@ window.__tiny = [
   var css = document.createElement('style');
   css.textContent = '#pre{background:#fff center/cover no-repeat;background-image:url(assets/steps/' + coming.step + '.jpg),url(' + window.__tiny[coming.step] + ')}#pre svg{display:none}';
   document.head.appendChild(css);
+  /* once the picture is on the screen, the page that sent PowerPoint here may send it on */
+  var picture = new Image();
+  picture.onload = picture.onerror = function () {
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      try { new BroadcastChannel('hacken-slides').postMessage({ shown: coming.step }); } catch (e) {}
+    }); });
+  };
+  picture.src = 'assets/steps/' + coming.step + '.jpg';
 })();
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">

@@ -350,10 +350,19 @@
         var missing = steps.map(function (x, i) { return i; }).filter(function (i) { return !there[i]; });
         if (!missing.length || view !== 'edit' || stepping !== null) return;
         near.postMessage({ warming: true });
-        var i = 0;
+        /* each slide stays in view until its new page shows its picture: PowerPoint takes the picture for its
+           slide list from what the page shows, and a page that has drawn nothing yet would leave it white */
+        var i = 0, waiting = null, onward = null;
+        near.addEventListener('message', function (e) { if (e.data && e.data.shown === waiting && onward) { var go = onward; onward = null; setTimeout(go, 250); } });
         (function one() {
-          if (i < missing.length) { announce(missing[i]); toSlide(missing[i++]); setTimeout(one, 500); }
-          else toSlide(own);
+          if (i >= missing.length) { waiting = null; toSlide(own); return; }
+          var k = missing[i++], gone = false;
+          waiting = k;
+          onward = function () { if (gone) return; gone = true; one(); };
+          var later = onward;
+          setTimeout(function () { if (onward === later) { onward = null; later(); } }, 3000);
+          announce(k);
+          toSlide(k);
         })();
       }, 400);
     }
